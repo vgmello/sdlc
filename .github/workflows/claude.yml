@@ -115,9 +115,8 @@ jobs:
           echo "=== Running Claude Code ==="
           echo "User prompt: $USER_PROMPT"
 
-          # Run Claude Code in container with prompts via stdin and env
-          # Note: We can't mount $GITHUB_WORKSPACE/repo because we're in a Docker-in-Docker scenario
-          # The runner container path doesn't exist on the host where the Docker daemon runs
+          # Run Claude Code in container
+          # Clone the repo inside the container to avoid Docker-in-Docker volume mount issues
           set +e
           echo "$USER_PROMPT" | docker run --rm -i \
             -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
@@ -125,8 +124,35 @@ jobs:
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             -e SYSTEM_PROMPT="$SYSTEM_PROMPT" \
+            -e REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            -e BRANCH_NAME="${{ steps.claude-branch.outputs.BRANCH_NAME }}" \
+            -e BRANCH_EXISTS="${{ steps.claude-branch.outputs.BRANCH_EXISTS }}" \
             sdlc-claude:latest \
-            bash -c 'echo "$SYSTEM_PROMPT" > /tmp/system-prompt.txt && claude --continue --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)"' \
+            bash -c '
+              # Clone the repository into the container
+              cd /workspace
+              if [ "$BRANCH_EXISTS" == "true" ]; then
+                git clone --branch "$BRANCH_NAME" "$REPO_URL" repo
+              else
+                git clone "$REPO_URL" repo
+                cd repo
+                git checkout -b "$BRANCH_NAME"
+                cd ..
+              fi
+              cd repo
+
+              # Save system prompt and run Claude Code
+              echo "$SYSTEM_PROMPT" > /tmp/system-prompt.txt
+              claude --continue --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)"
+
+              # Push changes if any
+              if [[ -n $(git status -s) ]]; then
+                git add .
+                git commit -m "Claude Code changes for issue #'"$ISSUE_NUMBER"'"
+                git push origin "$BRANCH_NAME"
+                echo "Changes pushed to branch $BRANCH_NAME"
+              fi
+            ' \
             2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
 
           CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
