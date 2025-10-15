@@ -94,6 +94,20 @@ jobs:
           # Create claude subdirectory if it doesn't exist
           mkdir -p "$GITHUB_WORKSPACE/claude/claude"
 
+          # Debug: Find the actual host path for Docker mounts
+          echo "=== Investigating mount paths for Docker-in-Docker ==="
+          echo "Current path: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          df -h "$GITHUB_WORKSPACE" | tail -1
+          mount | grep "$GITHUB_WORKSPACE" || echo "No direct mount found"
+
+          # Check if we can find the host path
+          if docker ps >/dev/null 2>&1; then
+            SELF_CONTAINER_ID=$(basename $(cat /proc/1/cpuset))
+            echo "Self container ID: $SELF_CONTAINER_ID"
+            docker inspect "$SELF_CONTAINER_ID" 2>/dev/null | grep -A 5 "Mounts" || echo "Cannot inspect self"
+          fi
+
       - name: Run Claude Code in Container
         id: claude_run
         env:
