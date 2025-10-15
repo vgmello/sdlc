@@ -34,8 +34,8 @@ Copy the token value that is displayed.
 1. Go to: https://github.com/settings/personal-access-tokens
 2. Click **Generate new token**
 3. Give it a descriptive name (e.g., "SDLC Self-hosted Runner")
-4. Select scopes:
-   - ✅ **repo** (Admin Read-write of repositories)
+4. Select Permissions:
+   - ✅ **Administration** (Read-write)
 5. Click **Generate token**
 6. **Copy the token** (you won't be able to see it again)
 
