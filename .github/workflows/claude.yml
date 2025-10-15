@@ -124,8 +124,8 @@ jobs:
             --continue \
             --print \
             --system-prompt "$SYSTEM_PROMPT" \
-            --prompt "$PROMPT" \
             --dangerously-skip-permissions \
+            "$PROMPT" \
             2>&1 | tee /tmp/claude_output.txt
 
       - name: Commit and Push Changes
