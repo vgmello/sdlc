@@ -18,7 +18,6 @@ ISSUE_TYPE="${ISSUE_TYPE:-issue}"
 
 # Workspace directories
 WORKSPACE_DIR="/workspace"
-REPO_DIR="$WORKSPACE_DIR/repo"
 CLAUDE_STATE_DIR="/home/claude/.claude/projects/-workspace"
 CLAUDE_OUTPUT_FILE="$WORKSPACE_DIR/claude-output.txt"
 
@@ -46,12 +45,12 @@ cd "$WORKSPACE_DIR"
 echo "=== Cloning main repository ==="
 if [ -n "$GITHUB_REF" ]; then
     echo "Cloning with specific ref: $GITHUB_REF"
-    git clone --depth 1 --branch "$GITHUB_REF" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$REPO_DIR" 2>&1 | grep -v "x-access-token" || true
+    git clone --depth 1 --branch "$GITHUB_REF" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORKSPACE_DIR" 2>&1 | grep -v "x-access-token" || true
 else
     echo "Cloning default branch"
-    git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$REPO_DIR" 2>&1 | grep -v "x-access-token" || true
+    git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORKSPACE_DIR" 2>&1 | grep -v "x-access-token" || true
 fi
-echo "Repository cloned to: $REPO_DIR"
+echo "Repository cloned to: $WORKSPACE_DIR"
 echo ""
 
 # Setup Claude state directory and clone/create branch
@@ -72,24 +71,34 @@ fi
 echo "Claude state directory: $CLAUDE_STATE_DIR"
 echo ""
 
-# Change to repo directory for Claude to work in
-cd "$REPO_DIR"
+# Change to workspace directory for Claude to work in
+cd "$WORKSPACE_DIR"
 
 # Prepare prompts
 echo "=== Preparing prompts ==="
 
-# System prompt - try to read from repo, otherwise use default
-SYSTEM_PROMPT_FILE="$REPO_DIR/.github/sdlc/claude-system-prompt.md"
-if [ ! -f "$SYSTEM_PROMPT_FILE" ]; then
-    # Fallback to old location
-    SYSTEM_PROMPT_FILE="$REPO_DIR/.github/claude-system-prompt.md"
-fi
+# System prompt - read from repo
+SYSTEM_PROMPT_FILE="$WORKSPACE_DIR/.github/sdlc/claude-system-prompt.md"
 
 if [ -f "$SYSTEM_PROMPT_FILE" ]; then
     echo "System prompt found at: $SYSTEM_PROMPT_FILE"
     SYSTEM_PROMPT=$(cat "$SYSTEM_PROMPT_FILE")
 else
-    echo "No system prompt file found, using default"
+    echo ""
+    echo "=========================================="
+    echo "WARNING: No system prompt file found!"
+    echo "=========================================="
+    echo ""
+    echo "Expected location: $SYSTEM_PROMPT_FILE"
+    echo ""
+    echo "Using default system prompt instead."
+    echo "For better results, create a system prompt file with:"
+    echo "  - Project context and guidelines"
+    echo "  - Coding standards and conventions"
+    echo "  - Repository structure information"
+    echo ""
+    echo "=========================================="
+    echo ""
     SYSTEM_PROMPT="You are Claude Code, an AI assistant helping with software development tasks."
 fi
 

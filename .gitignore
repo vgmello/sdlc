@@ -1,8 +1,0 @@
-# Old runner directory (moved to .github/sdlc/github-runner)
-runner/
-
-# Environment files
-.env
-
-# Docker volumes and logs
-*.log
