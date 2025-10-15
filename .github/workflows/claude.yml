@@ -106,10 +106,6 @@ jobs:
           ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
           ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
         run: |
-          # Authenticate gh CLI
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh auth status
-
           # Change to main repo directory (via symlink)
           cd /repo
 
@@ -154,12 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Authenticate gh CLI
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)
-
-          # Post as comment on issue or PR
+          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)          # Post as comment on issue or PR
           if [ "${{ steps.context.outputs.TYPE }}" == "issue" ]; then
             gh issue comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
           else
