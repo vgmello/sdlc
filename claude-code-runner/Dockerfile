@@ -45,4 +45,3 @@ RUN git config --global user.name 'github-actions[bot]' && \
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/bin/bash"]
