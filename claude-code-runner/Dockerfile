@@ -21,6 +21,9 @@ RUN useradd -m -s /bin/bash claude && \
     echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude && \
     chmod 0440 /etc/sudoers.d/claude
 
+# Copy entrypoint before switching to claude user
+COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+
 USER claude
 WORKDIR /home/claude
 
@@ -41,4 +44,5 @@ RUN git config --global user.name 'github-actions[bot]' && \
     git config --global credential.helper store
 
 WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]

@@ -1,0 +1,4 @@
+# Claude Code workflow temporary files
+.claude-user-prompt.txt
+.claude-system-prompt.txt
+claude-output.txt

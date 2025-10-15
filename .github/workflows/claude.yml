@@ -104,24 +104,25 @@ jobs:
           # Get the user's request (remove @claude mention and clean up)
           USER_REQUEST=$(echo "${{ steps.context.outputs.BODY }}" | sed 's/@claude//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-          # Create simple prompt with just the essentials
+          # Create user prompt with context
           PROMPT="You are working on $ISSUE_TYPE #$ISSUE_NUMBER in repository ${{ github.repository }}.
 
           User request: $USER_REQUEST"
 
-          # Run Claude Code in container with git credentials
-          # Pass the prompt via echo to stdin instead of mounting a file
-          echo "$PROMPT" | docker run --rm -i \
+          echo "$PROMPT" > "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt"
+
+          # Copy the system prompt from the repository (use existing file)
+          cp "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md" "$GITHUB_WORKSPACE/repo/.claude-system-prompt.txt"
+
+          # Run Claude Code in container (entrypoint handles the rest)
+          docker run --rm \
             -v "$GITHUB_WORKSPACE/repo:/workspace" \
             -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
-            -e GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
-            -w /workspace \
             sdlc-claude:latest \
-            bash -c 'echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" > /home/claude/.git-credentials && claude --continue --print --dangerously-skip-permissions' \
-            2>&1 | tee /tmp/claude_output.txt
+            2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
 
       - name: Commit and Push Changes
         run: |
@@ -142,10 +143,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Post as comment on issue or PR
-          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)
-          if [ "${{ steps.context.outputs.TYPE }}" == "issue" ]; then
-            gh issue comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
-          else
-            gh pr comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
-          fi
+          # Post as comment on issue or PR using GitHub API
+          CLAUDE_OUTPUT=$(cat "$GITHUB_WORKSPACE/claude-output.txt")
+
+          # Escape the output for JSON (replace quotes, newlines, etc.)
+          ESCAPED_OUTPUT=$(echo "$CLAUDE_OUTPUT" | jq -Rs .)
+
+          # Create JSON payload
+          PAYLOAD="{\"body\": $ESCAPED_OUTPUT}"
+
+          # Post comment using GitHub API (both issues and PRs use the same endpoint)
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ steps.context.outputs.NUMBER }}/comments" \
+            -d "$PAYLOAD"

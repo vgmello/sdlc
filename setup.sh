@@ -42,7 +42,7 @@ echo "  Building Claude Code Container"
 echo "================================================"
 echo ""
 echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
-docker build -t sdlc-claude:latest -f Dockerfile .
+docker build -t sdlc-claude:latest claude-code-runner
 
 if [ $? -eq 0 ]; then
     echo ""
