@@ -101,42 +101,33 @@ jobs:
           ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
           ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
         run: |
-          # Debug: Show paths and verify files
-          echo "=== Debug Info ==="
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          echo "Repo path: $GITHUB_WORKSPACE/repo"
-          echo "Listing repo directory:"
-          ls -la "$GITHUB_WORKSPACE/repo/" | head -20
+          # Create user prompt
+          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
 
-          # Create user prompt with context - use a file to avoid shell injection
-          cat > "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt" << 'PROMPT_EOF'
-          You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
+          User request: ${{ steps.context.outputs.BODY }}"
 
-          User request: ${{ steps.context.outputs.BODY }}
-          PROMPT_EOF
+          # Remove @claude mention
+          USER_PROMPT=$(echo "$USER_PROMPT" | sed 's/@claude//g')
 
-          # Remove @claude mention from the prompt
-          sed -i 's/@claude//g' "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt"
+          # Read system prompt
+          SYSTEM_PROMPT=$(cat "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md")
 
-          # Copy the system prompt from the repository (use existing file)
-          cp "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md" "$GITHUB_WORKSPACE/repo/.claude-system-prompt.txt"
+          echo "=== Running Claude Code ==="
+          echo "User prompt: $USER_PROMPT"
 
-          # Verify files were created
-          echo "=== Verifying prompt files ==="
-          ls -la "$GITHUB_WORKSPACE/repo/" | grep claude
-          echo "User prompt content:"
-          head -5 "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt"
-
-          # Run Claude Code in container (entrypoint handles the rest)
-          # Capture output and exit code
+          # Run Claude Code in container with prompts via stdin and env
+          # Note: We can't mount $GITHUB_WORKSPACE/repo because we're in a Docker-in-Docker scenario
+          # The runner container path doesn't exist on the host where the Docker daemon runs
           set +e
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE/repo:/workspace" \
+          echo "$USER_PROMPT" | docker run --rm -i \
             -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
-            sdlc-claude:latest 2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
+            -e SYSTEM_PROMPT="$SYSTEM_PROMPT" \
+            sdlc-claude:latest \
+            bash -c 'echo "$SYSTEM_PROMPT" > /tmp/system-prompt.txt && claude --continue --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)"' \
+            2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
 
           CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
           set -e
