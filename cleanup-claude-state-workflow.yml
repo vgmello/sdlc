@@ -1,0 +1,74 @@
+name: Cleanup Claude State Branch
+
+# This workflow should be moved to .github/workflows/ once the 'workflows: write' permission is added
+# to the main Claude workflow (.github/workflows/claude.yml)
+
+on:
+  delete:
+    branches:
+      - 'issue-*'
+
+jobs:
+  cleanup:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract issue number from deleted branch
+        id: extract
+        run: |
+          # Get the deleted branch name from the event
+          DELETED_BRANCH="${{ github.event.ref }}"
+          echo "Deleted branch: $DELETED_BRANCH"
+
+          # Extract issue number from branch name (format: issue-{#id}-description)
+          if [[ $DELETED_BRANCH =~ ^issue-([0-9]+)- ]]; then
+            ISSUE_NUMBER="${BASH_REMATCH[1]}"
+            echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+            echo "Found issue number: $ISSUE_NUMBER"
+          else
+            echo "Branch does not match naming convention: issue-{#id}-description"
+            exit 0
+          fi
+
+      - name: Delete corresponding Claude state branch
+        if: steps.extract.outputs.ISSUE_NUMBER
+        run: |
+          ISSUE_NUMBER="${{ steps.extract.outputs.ISSUE_NUMBER }}"
+          CLAUDE_BRANCH="issue-${ISSUE_NUMBER}-claude"
+
+          echo "Looking for Claude state branch: $CLAUDE_BRANCH"
+
+          # Check if the Claude state branch exists on remote
+          if git ls-remote --heads origin "$CLAUDE_BRANCH" | grep -q "$CLAUDE_BRANCH"; then
+            echo "Found Claude state branch: $CLAUDE_BRANCH"
+            echo "Deleting remote branch..."
+            git push origin --delete "$CLAUDE_BRANCH"
+            echo "✅ Successfully deleted Claude state branch: $CLAUDE_BRANCH"
+          else
+            echo "ℹ️ No Claude state branch found for: $CLAUDE_BRANCH"
+          fi
+
+      - name: Post cleanup notification
+        if: steps.extract.outputs.ISSUE_NUMBER
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER="${{ steps.extract.outputs.ISSUE_NUMBER }}"
+          DELETED_BRANCH="${{ github.event.ref }}"
+          CLAUDE_BRANCH="issue-${ISSUE_NUMBER}-claude"
+
+          # Post a comment to the issue
+          gh issue comment "$ISSUE_NUMBER" --body "🧹 **Branch Cleanup**
+
+Deleted branch: \`$DELETED_BRANCH\`
+Cleaned up Claude state branch: \`$CLAUDE_BRANCH\`
+
+✅ Cleanup completed successfully!" || echo "Could not post comment (issue may be closed or locked)"
