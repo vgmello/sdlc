@@ -11,7 +11,8 @@ services:
       - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-}
       # Pass the host workspace path so workflows can mount it in spawned containers
-      - HOST_WORKSPACE_ROOT=${HOST_WORKSPACE_ROOT}
+      # This resolves ./workspaces to an absolute path at runtime
+      - HOST_WORKSPACE_ROOT=${PWD}/workspaces
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount host workspace so both runner and spawned containers can access it
