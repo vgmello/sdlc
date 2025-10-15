@@ -48,8 +48,8 @@ jobs:
             echo "BODY=${{ github.event.review.body }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Prepare Branch Info
-        id: branch
+      - name: Prepare Claude Branch Info
+        id: claude-branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: "claude"
-          ref: ${{ steps.branch.outputs.BRANCH_EXISTS == 'true' && steps.branch.outputs.BRANCH_NAME || github.ref }}
+          ref: ${{ steps.claude-branch.outputs.BRANCH_EXISTS == 'true' && steps.claude-branch.outputs.BRANCH_NAME || '' }}
 
       - name: Setup Branch and Symlink
         run: |
@@ -82,9 +82,9 @@ jobs:
           cd "$GITHUB_WORKSPACE/claude"
 
           # Create branch if it doesn't exist
-          if [ "${{ steps.branch.outputs.BRANCH_EXISTS }}" == "false" ]; then
-            git checkout -b "${{ steps.branch.outputs.BRANCH_NAME }}"
-            echo "Created new branch ${{ steps.branch.outputs.BRANCH_NAME }}"
+          if [ "${{ steps.claude-branch.outputs.BRANCH_EXISTS }}" == "false" ]; then
+            git checkout -b "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
+            echo "Created new branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
           fi
 
           # Create symlink for Claude projects (points to claude directory)
@@ -143,8 +143,8 @@ jobs:
           if [[ -n $(git status -s) ]]; then
             git add .
             git commit -m "Claude Code: ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }}"
-            git push origin "${{ steps.branch.outputs.BRANCH_NAME }}"
-            echo "Changes committed and pushed to branch ${{ steps.branch.outputs.BRANCH_NAME }}"
+            git push origin "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
+            echo "Changes committed and pushed to branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
           else
             echo "No changes to commit"
           fi
