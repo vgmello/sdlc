@@ -23,25 +23,120 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      actions: read
 
-      - name: Authenticate GitHub CLI
+    steps:
+      - name: Prepare Claude Context
+        id: context
         run: |
+          # Determine issue or PR number
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "TYPE=issue" >> $GITHUB_OUTPUT
+            echo "BODY=${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
+            echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "TYPE=issue" >> $GITHUB_OUTPUT
+            echo "BODY=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
+            echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "TYPE=pr" >> $GITHUB_OUTPUT
+            echo "BODY=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request_review" ]; then
+            echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "TYPE=pr" >> $GITHUB_OUTPUT
+            echo "BODY=${{ github.event.review.body }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get Claude Branch Name
+        id: claude-branch
+        run: |
+          BRANCH_NAME="${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}-claude"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+        with:
+          path: "workspace"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+        with:
+          path: "claude"
+          ref: ${{ steps.claude-branch.outputs.BRANCH_NAME }}
+
+      - name: Docker Run (Temp implementation)
+        run: |
+          WORKSPACE_DIR="$GITHUB_WORKSPACE/workspace"
+          CLAUDE_WORKSPACE="$GITHUB_WORKSPACE/claude"
+
+          mkdir -p "$HOME/.claude/projects"
+          ln -sf "$CLAUDE_WORKSPACE" "$HOME/.claude/projects/-repo"
+          ln -sf "$WORKSPACE_DIR" "/repo"
+
+          echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_WORKSPACE"
+
+      - name: Setup Branch and Symlink
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Claude Code
+        id: claude_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
+          ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
+        run: |
+          # Authenticate gh CLI
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           gh auth status
 
-      - name: Run Claude Code
-        id: claude
-        uses: anthropics/claude-code-action@v1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          assignee_trigger: "claude-bot"
-          claude_args: |
-            --dangerously-skip-permissions
+          # Change to work directory
+          cd "/repo"
+
+          # Load system prompt
+          SYSTEM_PROMPT=$(cat .github/claude-system-prompt.md)
+
+          # Get the user's request (remove @claude mention and clean up)
+          USER_REQUEST=$(echo "${{ steps.context.outputs.BODY }}" | sed 's/@claude//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          # Create simple prompt with just the essentials
+          PROMPT="You are working on $ISSUE_TYPE #$ISSUE_NUMBER in repository ${{ github.repository }}.
+
+          User request: $USER_REQUEST"
+
+          claude \
+            --continue \
+            --print \
+            --system-prompt "$SYSTEM_PROMPT" \
+            --prompt "$PROMPT" \
+            --dangerously-skip-permissions \
+            2>&1 | tee /tmp/claude_output.txt
+
+      - name: Commit and Push Claude State Changes
+        run: |
+          cd "$GITHUB_WORKSPACE/claude"
+
+          # Check if there are changes to commit
+          if [[ -n $(git status -s) ]]; then
+            git add .
+            git commit -m "Claude Code: ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }}"
+            git push origin "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
+            echo "Changes committed and pushed to branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Post Claude Response as Comment
+        if: always()
+        run: |
+          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)
+
+          # Post as comment on issue or PR
+          if [ "${{ steps.context.outputs.TYPE }}" == "issue" ]; then
+            gh issue comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
+          else
+            gh pr comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
+          fi
