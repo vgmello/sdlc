@@ -1,5 +1,4 @@
 # Environment files
-runner/.env
 .env
 
 # Docker volumes and logs
