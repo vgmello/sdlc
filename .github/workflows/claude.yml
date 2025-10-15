@@ -115,58 +115,29 @@ jobs:
           ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
           ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
         run: |
-          # Create user prompt
-          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
+          # Create prompts as files
+          cat > "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt" << 'EOF'
+          You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
 
-          User request: ${{ steps.context.outputs.BODY }}"
+          User request: ${{ steps.context.outputs.BODY }}
+          EOF
+          sed -i 's/@claude//g' "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt"
 
-          # Remove @claude mention
-          USER_PROMPT=$(echo "$USER_PROMPT" | sed 's/@claude//g')
+          cp "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md" "$GITHUB_WORKSPACE/repo/.claude-system-prompt.txt"
 
-          # Read system prompt
-          SYSTEM_PROMPT=$(cat "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md")
-
+          # For self-hosted runners, the workspace path is typically the same on host and in runner
+          # Try mounting directly with the current path
           echo "=== Running Claude Code ==="
-          echo "User prompt: $USER_PROMPT"
+          echo "Mounting: $GITHUB_WORKSPACE/repo -> /workspace"
 
-          # Run Claude Code in container
-          # Clone the repo inside the container to avoid Docker-in-Docker volume mount issues
           set +e
-          echo "$USER_PROMPT" | docker run --rm -i \
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/repo:/workspace" \
             -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
-            -e SYSTEM_PROMPT="$SYSTEM_PROMPT" \
-            -e REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
-            -e BRANCH_NAME="${{ steps.claude-branch.outputs.BRANCH_NAME }}" \
-            -e BRANCH_EXISTS="${{ steps.claude-branch.outputs.BRANCH_EXISTS }}" \
             sdlc-claude:latest \
-            bash -c '
-              # Clone the repository into the container
-              cd /workspace
-              if [ "$BRANCH_EXISTS" == "true" ]; then
-                git clone --branch "$BRANCH_NAME" "$REPO_URL" repo
-              else
-                git clone "$REPO_URL" repo
-                cd repo
-                git checkout -b "$BRANCH_NAME"
-                cd ..
-              fi
-              cd repo
-
-              # Save system prompt and run Claude Code
-              echo "$SYSTEM_PROMPT" > /tmp/system-prompt.txt
-              claude --continue --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)"
-
-              # Push changes if any
-              if [[ -n $(git status -s) ]]; then
-                git add .
-                git commit -m "Claude Code changes for issue #'"$ISSUE_NUMBER"'"
-                git push origin "$BRANCH_NAME"
-                echo "Changes pushed to branch $BRANCH_NAME"
-              fi
-            ' \
             2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
 
           CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
