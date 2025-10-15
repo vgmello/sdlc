@@ -109,21 +109,18 @@ jobs:
 
           User request: $USER_REQUEST"
 
-          # Save user prompt to a temporary file
-          echo "$PROMPT" > /tmp/user-prompt.txt
-
           # Run Claude Code in container with git credentials
-          docker run --rm \
+          # Pass the prompt via echo to stdin instead of mounting a file
+          echo "$PROMPT" | docker run --rm -i \
             -v "$GITHUB_WORKSPACE/repo:/workspace" \
             -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            -v /tmp/user-prompt.txt:/tmp/user-prompt.txt:ro \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             -w /workspace \
             sdlc-claude:latest \
-            bash -c 'echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" > /home/claude/.git-credentials && claude --continue --print --system-prompt "$(cat /workspace/.github/claude-system-prompt.md)" --dangerously-skip-permissions "$(cat /tmp/user-prompt.txt)"' \
+            bash -c 'echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" > /home/claude/.git-credentials && claude --continue --print --dangerously-skip-permissions' \
             2>&1 | tee /tmp/claude_output.txt
 
       - name: Commit and Push Changes
