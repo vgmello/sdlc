@@ -22,187 +22,61 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
-      actions: read
 
     steps:
-      - name: Prepare Claude Context
+      - name: Extract Context
         id: context
         run: |
-          # Determine issue or PR number
-          if [ "${{ github.event_name }}" == "issues" ]; then
-            echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "TYPE=issue" >> $GITHUB_OUTPUT
-            echo "BODY=${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
-            echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "TYPE=issue" >> $GITHUB_OUTPUT
-            echo "BODY=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
-            echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "TYPE=pr" >> $GITHUB_OUTPUT
-            echo "BODY=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request_review" ]; then
-            echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "TYPE=pr" >> $GITHUB_OUTPUT
-            echo "BODY=${{ github.event.review.body }}" >> $GITHUB_OUTPUT
-          fi
+          case "${{ github.event_name }}" in
+            issues)
+              echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+              echo "TYPE=issue" >> $GITHUB_OUTPUT
+              BODY="${{ github.event.issue.body }}"
+              ;;
+            issue_comment)
+              echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+              echo "TYPE=issue" >> $GITHUB_OUTPUT
+              BODY="${{ github.event.comment.body }}"
+              ;;
+            pull_request_review_comment)
+              echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+              echo "TYPE=pr" >> $GITHUB_OUTPUT
+              echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+              BODY="${{ github.event.comment.body }}"
+              ;;
+            pull_request_review)
+              echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+              echo "TYPE=pr" >> $GITHUB_OUTPUT
+              echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+              BODY="${{ github.event.review.body }}"
+              ;;
+          esac
 
-      - name: Prepare Claude Branch Info
-        id: claude-branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Remove @claude mentions
+          BODY=$(echo "$BODY" | sed 's/@claude//g')
+
+          # Multi-line output
+          {
+            echo "BODY<<EOF"
+            echo "$BODY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Run Claude Code
         run: |
-          BRANCH_NAME="${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}-claude"
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
 
-          # Check if branch exists remotely using authenticated URL
-          if git ls-remote --heads https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
-            echo "BRANCH_EXISTS=true" >> $GITHUB_OUTPUT
-            echo "Branch $BRANCH_NAME exists remotely"
-          else
-            echo "BRANCH_EXISTS=false" >> $GITHUB_OUTPUT
-            echo "Branch $BRANCH_NAME does not exist, will be created"
-          fi
+          User request: ${{ steps.context.outputs.BODY }}"
 
-      - name: Checkout Main Repository
-        uses: actions/checkout@v5
-        with:
-          path: "repo"
-
-      - name: Checkout Claude Branch
-        uses: actions/checkout@v5
-        with:
-          path: "claude"
-          ref: ${{ steps.claude-branch.outputs.BRANCH_EXISTS == 'true' && steps.claude-branch.outputs.BRANCH_NAME || null }}
-
-      - name: Setup Branch and Claude Directory
-        run: |
-          # Configure git in claude directory
-          cd "$GITHUB_WORKSPACE/claude"
-
-          # Configure git for authentication
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Create branch if it doesn't exist
-          if [ "${{ steps.claude-branch.outputs.BRANCH_EXISTS }}" == "false" ]; then
-            git checkout -b "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
-            echo "Created new branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
-          fi
-
-          # Create claude subdirectory if it doesn't exist
-          mkdir -p "$GITHUB_WORKSPACE/claude/claude"
-
-          # Debug: Find the actual host path for Docker mounts
-          echo "=== Investigating mount paths for Docker-in-Docker ==="
-          echo "Current path: $(pwd)"
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          df -h "$GITHUB_WORKSPACE" | tail -1
-          mount | grep "$GITHUB_WORKSPACE" || echo "No direct mount found"
-
-          # Check if we can find the host path
-          if docker ps >/dev/null 2>&1; then
-            SELF_CONTAINER_ID=$(basename $(cat /proc/1/cpuset))
-            echo "Self container ID: $SELF_CONTAINER_ID"
-            docker inspect "$SELF_CONTAINER_ID" 2>/dev/null | grep -A 5 "Mounts" || echo "Cannot inspect self"
-          fi
-
-      - name: Run Claude Code in Container
-        id: claude_run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
-          ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
-        run: |
-          # Create prompts as files
-          cat > "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt" << 'EOF'
-          You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
-
-          User request: ${{ steps.context.outputs.BODY }}
-          EOF
-          sed -i 's/@claude//g' "$GITHUB_WORKSPACE/repo/.claude-user-prompt.txt"
-
-          cp "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md" "$GITHUB_WORKSPACE/repo/.claude-system-prompt.txt"
-
-          # Calculate host path using HOST_WORKSPACE_ROOT environment variable
-          # This is set by the runner's docker-compose configuration
-          # Replace /home/runner/_work with the actual host mount point
-          if [ -z "$HOST_WORKSPACE_ROOT" ]; then
-            echo "ERROR: HOST_WORKSPACE_ROOT not set. Runners must be configured with workspace mount."
-            exit 1
-          fi
-          HOST_WORKSPACE_PATH=$(echo "$GITHUB_WORKSPACE" | sed "s|/home/runner/_work|$HOST_WORKSPACE_ROOT|")
-
-          echo "=== Running Claude Code ==="
-          echo "Runner workspace: $GITHUB_WORKSPACE/repo"
-          echo "Host workspace: $HOST_WORKSPACE_PATH/repo"
-          echo "Mounting host path into container"
-
-          set +e
           docker run --rm \
-            -v "$HOST_WORKSPACE_PATH/repo:/workspace" \
-            -v "$HOST_WORKSPACE_PATH/claude/claude:/home/claude/.claude/projects/-workspace" \
-            -v /var/run/docker.sock:/var/run/docker.sock \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
-            sdlc-claude:latest \
-            2>&1 | tee "$GITHUB_WORKSPACE/claude-output.txt"
-
-          CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
-          set -e
-
-          echo "Claude Code exit code: $CLAUDE_EXIT_CODE"
-          echo "OUTPUT_FILE=$GITHUB_WORKSPACE/claude-output.txt" >> $GITHUB_OUTPUT
-
-      - name: Commit and Push Claude State Changes
-        run: |
-          cd "$GITHUB_WORKSPACE/claude"
-
-          # Check if there are changes to commit (Claude project state)
-          if [[ -n $(git status -s) ]]; then
-            git add .
-            git commit -m "Claude Code state: ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }}"
-
-            # Configure git to use token for push
-            git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            git push -u origin "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
-            echo "Claude state committed and pushed to branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
-          else
-            echo "No Claude state changes to commit"
-          fi
-
-      - name: Post Claude Response as Comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Check if output file exists and has content
-          if [ ! -f "$GITHUB_WORKSPACE/claude-output.txt" ] || [ ! -s "$GITHUB_WORKSPACE/claude-output.txt" ]; then
-            echo "No output file found or file is empty. Creating error message."
-            echo "Error: Claude Code did not produce any output. Check the workflow logs for details." > "$GITHUB_WORKSPACE/claude-output.txt"
-          fi
-
-          # Read the output and escape for JSON
-          CLAUDE_OUTPUT=$(cat "$GITHUB_WORKSPACE/claude-output.txt")
-
-          # Create formatted comment with code block
-          COMMENT_BODY="## Claude Code Response
-
-          \`\`\`
-          ${CLAUDE_OUTPUT}
-          \`\`\`
-
-          ---
-          *Triggered by @${{ github.actor }} on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }}*"
-
-          # Escape for JSON using jq
-          JSON_BODY=$(jq -n --arg body "$COMMENT_BODY" '{body: $body}')
-
-          # Post comment using GitHub API
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ steps.context.outputs.NUMBER }}/comments" \
-            -d "$JSON_BODY"
+            -e GITHUB_REPOSITORY="${{ github.repository }}" \
+            -e GITHUB_ACTOR="${{ github.actor }}" \
+            -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
+            -e CLAUDE_BRANCH_NAME="${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}-claude" \
+            -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
+            -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
+            -e USER_PROMPT="$USER_PROMPT" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            sdlc-claude:latest

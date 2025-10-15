@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 # Args 
-ARG RUNNER_VERSION="2.321.0"
+ARG RUNNER_VERSION="2.329.0"
 
 # Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -13,6 +13,7 @@ ENV RUNNER_LABELS=self-hosted,linux,docker
 RUN useradd -m -s /bin/bash runner && \
     mkdir -p /home/runner && \
     chown -R runner:runner /home/runner && \
+    #
     # Install basic dependencies
     apt update && \
     apt install -y \
@@ -22,19 +23,24 @@ RUN useradd -m -s /bin/bash runner && \
     jq \
     libicu-dev \
     && rm -rf /var/lib/apt/lists/* && \
+    #
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
     chmod a+r /etc/apt/keyrings/docker.asc && \
+    #
     # Add the Docker repository to Apt sources
     echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
     $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
     tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    #
     # Update package index with new repositories
     apt update && \
+    #
     # Install extract packages
     apt install -y \
+    #
     # Install Docker CE CLI
     docker-ce-cli && \
     rm -rf /var/lib/apt/lists/*

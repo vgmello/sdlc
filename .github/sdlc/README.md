@@ -44,7 +44,7 @@ Copy the token value that is displayed.
 Run the setup script and provide the information when prompted:
 
 ```bash
-./setup.sh
+./sdlc.sh --setup
 ```
 
 The script will:
@@ -59,8 +59,7 @@ The script will:
 ### Step 5: Start the Runners
 
 ```bash
-cd runner
-docker-compose up -d
+./sdlc.sh
 ```
 
 This will start 5 self-hosted GitHub Actions runners.

@@ -7,7 +7,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN useradd -m -s /bin/bash claude && \
     mkdir -p /home/claude/.local/bin && \
     chown -R claude:claude /home/claude && \
-    # Install GitHub CLI
+    #
+    # Install GitHub CLI, Python, Sudo, etc
     mkdir -p -m 755 /etc/apt/keyrings && \
     wget -nv -O /tmp/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg && \
     cat /tmp/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
@@ -16,6 +17,7 @@ RUN useradd -m -s /bin/bash claude && \
     apt update && \
     apt install -y gh sudo python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* /tmp/githubcli-archive-keyring.gpg && \
+    #
     # Add claude user to sudo group with passwordless sudo
     usermod -aG sudo claude && \
     echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude && \
