@@ -15,7 +15,7 @@ RUN useradd -m -s /bin/bash claude && \
     chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
     apt update && \
-    apt install -y gh sudo python3 python3-pip python3-venv && \
+    apt install -y gh sudo python3 python3-pip python3-venv jq && \
     rm -rf /var/lib/apt/lists/* /tmp/githubcli-archive-keyring.gpg && \
     #
     # Add claude user to sudo group with passwordless sudo
