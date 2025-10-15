@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: "claude"
-          ref: ${{ steps.claude-branch.outputs.BRANCH_EXISTS == 'true' && steps.claude-branch.outputs.BRANCH_NAME || '' }}
+          ref: ${{ steps.claude-branch.outputs.BRANCH_EXISTS == 'true' && steps.claude-branch.outputs.BRANCH_NAME || null }}
 
       - name: Setup Branch and Symlink
         run: |
