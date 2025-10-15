@@ -10,7 +10,11 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-}
+      # Pass the host workspace path so workflows can mount it in spawned containers
+      - HOST_WORKSPACE_ROOT=${HOST_WORKSPACE_ROOT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mount host workspace so both runner and spawned containers can access it
+      - ./workspaces:/home/runner/_work
     deploy:
       replicas: 5

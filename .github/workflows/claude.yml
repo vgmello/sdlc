@@ -125,15 +125,24 @@ jobs:
 
           cp "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md" "$GITHUB_WORKSPACE/repo/.claude-system-prompt.txt"
 
-          # For self-hosted runners, the workspace path is typically the same on host and in runner
-          # Try mounting directly with the current path
+          # Calculate host path using HOST_WORKSPACE_ROOT environment variable
+          # This is set by the runner's docker-compose configuration
+          # Replace /home/runner/_work with the actual host mount point
+          if [ -z "$HOST_WORKSPACE_ROOT" ]; then
+            echo "ERROR: HOST_WORKSPACE_ROOT not set. Runners must be configured with workspace mount."
+            exit 1
+          fi
+          HOST_WORKSPACE_PATH=$(echo "$GITHUB_WORKSPACE" | sed "s|/home/runner/_work|$HOST_WORKSPACE_ROOT|")
+
           echo "=== Running Claude Code ==="
-          echo "Mounting: $GITHUB_WORKSPACE/repo -> /workspace"
+          echo "Runner workspace: $GITHUB_WORKSPACE/repo"
+          echo "Host workspace: $HOST_WORKSPACE_PATH/repo"
+          echo "Mounting host path into container"
 
           set +e
           docker run --rm \
-            -v "$GITHUB_WORKSPACE/repo:/workspace" \
-            -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
+            -v "$HOST_WORKSPACE_PATH/repo:/workspace" \
+            -v "$HOST_WORKSPACE_PATH/claude/claude:/home/claude/.claude/projects/-workspace" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
