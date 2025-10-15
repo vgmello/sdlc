@@ -88,7 +88,9 @@ run_setup() {
         # Prompt for GitHub Token
         echo -e "${YELLOW}1. GitHub Personal Access Token${NC}"
         echo "   Create one at: https://github.com/settings/tokens"
-        echo "   Required scopes: repo (Full control of private repositories)"
+        echo "   Required scopes:"
+        echo "     - For repository runners: 'repo' (Full control of private repositories)"
+        echo "     - For organization runners: 'admin:org' (Full control of orgs and teams)"
         echo ""
 
         while true; do
@@ -113,25 +115,36 @@ run_setup() {
 
         echo ""
 
-        # Prompt for Repository
-        echo -e "${YELLOW}2. GitHub Repository${NC}"
-        echo "   Format: owner/repo-name (e.g., octocat/hello-world)"
+        # Prompt for Repository or Organization
+        echo -e "${YELLOW}2. GitHub Repository or Organization${NC}"
+        echo "   Repository format: owner/repo-name (e.g., octocat/hello-world)"
+        echo "   Organization format: org-name (e.g., my-organization)"
         echo ""
 
         while true; do
-            read -p "   Enter your repository: " GITHUB_REPOSITORY
+            read -p "   Enter your repository or organization: " GITHUB_REPOSITORY
 
             if [ -z "$GITHUB_REPOSITORY" ]; then
-                echo -e "${YELLOW}   Error: Repository cannot be empty${NC}"
+                echo -e "${YELLOW}   Error: Repository/Organization cannot be empty${NC}"
                 continue
             fi
 
-            if [[ ! $GITHUB_REPOSITORY =~ ^[^/]+/[^/]+$ ]]; then
-                echo -e "${YELLOW}   Error: Repository must be in format 'owner/repo-name'${NC}"
+            # Check if it's an org (no slash) or repo (has slash)
+            if [[ $GITHUB_REPOSITORY =~ ^[^/]+/[^/]+$ ]]; then
+                # Repository format
+                echo -e "${GREEN}   ✓ Detected repository-level runner configuration${NC}"
+                RUNNER_SCOPE="repo"
+                break
+            elif [[ $GITHUB_REPOSITORY =~ ^[^/]+$ ]]; then
+                # Organization format
+                echo -e "${GREEN}   ✓ Detected organization-level runner configuration${NC}"
+                echo -e "${BLUE}   Note: Using organization token - runners will be available to all repos in the org${NC}"
+                RUNNER_SCOPE="org"
+                break
+            else
+                echo -e "${YELLOW}   Error: Invalid format. Use 'owner/repo-name' for repository or 'org-name' for organization${NC}"
                 continue
             fi
-
-            break
         done
 
         echo ""
@@ -154,8 +167,11 @@ run_setup() {
 # Required: Your GitHub Personal Access Token with repo access (admin write on repo needed)
 GITHUB_TOKEN=$GITHUB_TOKEN
 
-# Required: Repository in format owner/repo-name
+# Required: Repository in format owner/repo-name OR Organization name
 GITHUB_REPOSITORY=$GITHUB_REPOSITORY
+
+# Runner scope: 'repo' for repository-level, 'org' for organization-level
+RUNNER_SCOPE=$RUNNER_SCOPE
 
 # Optional: Prefix for runner names (default: none)
 # Runners will be named: {prefix}-gh-runner-1, {prefix}-gh-runner-2, etc.

@@ -9,6 +9,7 @@ services:
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      - RUNNER_SCOPE=${RUNNER_SCOPE:-repo}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
