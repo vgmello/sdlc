@@ -225,24 +225,36 @@ start_runners() {
         exit 1
     fi
 
+    # Get repository name from git remote
+    REPO_URL=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        # Extract repository name from URL (handles both HTTPS and SSH formats)
+        PROJECT_NAME=$(basename "$REPO_URL" .git)
+        echo -e "${BLUE}Using project name: ${GREEN}$PROJECT_NAME${NC}"
+    else
+        # Fallback to directory name if git remote is not available
+        PROJECT_NAME=$(basename "$SCRIPT_DIR")
+        echo -e "${YELLOW}Warning: Could not determine git repository name, using directory name: $PROJECT_NAME${NC}"
+    fi
+
     echo -e "${BLUE}Starting runners with docker-compose...${NC}"
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose up -d
+    docker-compose -p "$PROJECT_NAME" up -d
 
     if [ $? -eq 0 ]; then
         echo ""
         echo -e "${GREEN}✓ Runners started successfully!${NC}"
         echo ""
         echo "To check status:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose ps${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME ps${NC}"
         echo ""
         echo "To view logs:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose logs -f${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME logs -f${NC}"
         echo ""
         echo "To stop runners:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose down${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME down${NC}"
         echo ""
     else
         echo -e "${RED}✗ Failed to start runners${NC}"
