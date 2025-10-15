@@ -78,12 +78,6 @@ jobs:
 
           echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_WORKSPACE"
 
-      - name: Setup Branch and Symlink
-        run: |
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Run Claude Code
         id: claude_run
         env:
@@ -120,6 +114,10 @@ jobs:
       - name: Commit and Push Claude State Changes
         run: |
           cd "$GITHUB_WORKSPACE/claude"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Check if there are changes to commit
           if [[ -n $(git status -s) ]]; then
