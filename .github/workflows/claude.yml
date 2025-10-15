@@ -76,10 +76,14 @@ jobs:
           path: "claude"
           ref: ${{ steps.claude-branch.outputs.BRANCH_EXISTS == 'true' && steps.claude-branch.outputs.BRANCH_NAME || null }}
 
-      - name: Setup Branch and Symlink
+      - name: Setup Branch and Claude Directory
         run: |
           # Configure git in claude directory
           cd "$GITHUB_WORKSPACE/claude"
+
+          # Configure git for authentication
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Create branch if it doesn't exist
           if [ "${{ steps.claude-branch.outputs.BRANCH_EXISTS }}" == "false" ]; then
@@ -87,30 +91,18 @@ jobs:
             echo "Created new branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
           fi
 
-          # Create symlink for Claude projects (points to claude directory)
-          CLAUDE_PWD="$GITHUB_WORKSPACE/claude/claude/"
-          mkdir -p $CLAUDE_PWD
+          # Create claude subdirectory if it doesn't exist
+          mkdir -p "$GITHUB_WORKSPACE/claude/claude"
 
-          mkdir -p "$HOME/.claude/projects"
-          ln -sf "$CLAUDE_PWD" "$HOME/.claude/projects/-repo"
-          echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_PWD"
-
-          # Create symlink from /repo to main checkout for easy access
-          ln -sf "$GITHUB_WORKSPACE/repo" /repo
-          echo "Symlink created: /repo -> $GITHUB_WORKSPACE/repo"
-
-      - name: Run Claude Code
+      - name: Run Claude Code in Container
         id: claude_run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ steps.context.outputs.NUMBER }}
           ISSUE_TYPE: ${{ steps.context.outputs.TYPE }}
         run: |
-          # Change to main repo directory (via symlink)
-          cd /repo
-
           # Load system prompt
-          SYSTEM_PROMPT=$(cat .github/claude-system-prompt.md)
+          SYSTEM_PROMPT=$(cat "$GITHUB_WORKSPACE/repo/.github/claude-system-prompt.md")
 
           # Get the user's request (remove @claude mention and clean up)
           USER_REQUEST=$(echo "${{ steps.context.outputs.BODY }}" | sed 's/@claude//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -120,20 +112,24 @@ jobs:
 
           User request: $USER_REQUEST"
 
-          claude \
-            --continue \
-            --print \
-            --system-prompt "$SYSTEM_PROMPT" \
-            --dangerously-skip-permissions \
-            "$PROMPT" \
+          # Run Claude Code in container with git credentials
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/repo:/workspace" \
+            -v "$GITHUB_WORKSPACE/claude/claude:/home/claude/.claude/projects/-workspace" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
+            -e GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            -w /workspace \
+            sdlc-claude:latest \
+            bash -c "\
+              echo 'https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com' > /home/claude/.git-credentials && \
+              claude --continue --print --system-prompt \"$SYSTEM_PROMPT\" --dangerously-skip-permissions \"$PROMPT\"" \
             2>&1 | tee /tmp/claude_output.txt
 
       - name: Commit and Push Changes
         run: |
           cd "$GITHUB_WORKSPACE/claude"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Check if there are changes to commit
           if [[ -n $(git status -s) ]]; then
@@ -150,7 +146,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)          # Post as comment on issue or PR
+          # Post as comment on issue or PR
+          CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)
           if [ "${{ steps.context.outputs.TYPE }}" == "issue" ]; then
             gh issue comment ${{ steps.context.outputs.NUMBER }} --body "$CLAUDE_OUTPUT"
           else
