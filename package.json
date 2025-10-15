@@ -1,0 +1,45 @@
+{
+  "name": "sdlc-claude-code",
+  "version": "1.0.0",
+  "description": "Self-hosted Claude Code for GitHub Actions - Automate development workflows with AI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vgmello/sdlc.git"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "github-actions",
+    "automation",
+    "devops",
+    "sdlc",
+    "self-hosted"
+  ],
+  "author": "vgmello",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "setup": "./sdlc.sh --setup",
+    "start": "./sdlc.sh",
+    "stop": "./sdlc.sh --stop",
+    "logs": "./sdlc.sh --logs",
+    "build": "docker build -t sdlc-claude:latest .github/sdlc/claude-code-runner/",
+    "verify": "docker images | grep sdlc && echo 'Docker images built successfully'"
+  },
+  "devDependencies": {},
+  "optionalDependencies": {
+    "@anthropic-ai/claude-code": "latest"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}
