@@ -19,7 +19,7 @@ ISSUE_TYPE="${ISSUE_TYPE:-issue}"
 # Workspace directories
 WORKSPACE_DIR="/workspace"
 CLAUDE_STATE_DIR="/home/claude/.claude/projects/-workspace"
-CLAUDE_OUTPUT_FILE="$WORKSPACE_DIR/claude-output.txt"
+CLAUDE_OUTPUT_FILE="/tmp/claude-output.txt"
 
 echo "Configuration:"
 echo "  Repository: $GITHUB_REPOSITORY"
@@ -65,7 +65,6 @@ else
     git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$CLAUDE_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
     cd "$CLAUDE_STATE_DIR"
     git checkout -b "$CLAUDE_BRANCH_NAME"
-    cd "$WORKSPACE_DIR"
 fi
 
 echo "Claude state directory: $CLAUDE_STATE_DIR"
