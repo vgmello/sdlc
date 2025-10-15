@@ -48,35 +48,56 @@ jobs:
             echo "BODY=${{ github.event.review.body }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get Claude Branch Name
-        id: claude-branch
+      - name: Prepare Branch Info
+        id: branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH_NAME="${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}-claude"
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
-      - name: Checkout Repository
+          # Check if branch exists remotely using authenticated URL
+          if git ls-remote --heads https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "BRANCH_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME exists remotely"
+          else
+            echo "BRANCH_EXISTS=false" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME does not exist, will be created"
+          fi
+
+      - name: Checkout Main Repository
         uses: actions/checkout@v5
         with:
-          path: "workspace"
+          path: "repo"
 
-      - name: Checkout Repository
+      - name: Checkout Claude Branch
         uses: actions/checkout@v5
         with:
           path: "claude"
-          ref: ${{ steps.claude-branch.outputs.BRANCH_NAME }}
+          ref: ${{ steps.branch.outputs.BRANCH_EXISTS == 'true' && steps.branch.outputs.BRANCH_NAME || github.ref }}
 
-      - name: Docker Run (Temp implementation)
+      - name: Setup Branch and Symlink
         run: |
-          WORKSPACE_DIR="$GITHUB_WORKSPACE/workspace"
-          CLAUDE_WORKSPACE="$GITHUB_WORKSPACE/claude"
+          # Configure git in claude directory
+          cd "$GITHUB_WORKSPACE/claude"
+
+          # Create branch if it doesn't exist
+          if [ "${{ steps.branch.outputs.BRANCH_EXISTS }}" == "false" ]; then
+            git checkout -b "${{ steps.branch.outputs.BRANCH_NAME }}"
+            echo "Created new branch ${{ steps.branch.outputs.BRANCH_NAME }}"
+          fi
+
+          # Create symlink for Claude projects (points to claude directory)
+          CLAUDE_PWD="$GITHUB_WORKSPACE/claude/claude"
+          mkdir -p $CLAUDE_PWD
 
           mkdir -p "$HOME/.claude/projects"
-          mkdir -p "$CLAUDE_WORKSPACE/claude"
+          ln -sf "$CLAUDE_PWD" "$HOME/.claude/projects/-repo"
+          echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_PWD"
 
-          ln -sf "$CLAUDE_WORKSPACE/claude" "$HOME/.claude/projects/-repo"
-          ln -sf "$WORKSPACE_DIR" "/repo"
-
-          echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_WORKSPACE"
+          # Create symlink from /repo to main checkout for easy access
+          ln -sf "$GITHUB_WORKSPACE/repo" /repo
+          echo "Symlink created: /repo -> $GITHUB_WORKSPACE/repo"
 
       - name: Run Claude Code
         id: claude_run
@@ -89,8 +110,8 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           gh auth status
 
-          # Change to work directory
-          cd "/repo"
+          # Change to main repo directory (via symlink)
+          cd /repo
 
           # Load system prompt
           SYSTEM_PROMPT=$(cat .github/claude-system-prompt.md)
@@ -111,11 +132,10 @@ jobs:
             --dangerously-skip-permissions \
             2>&1 | tee /tmp/claude_output.txt
 
-      - name: Commit and Push Claude State Changes
+      - name: Commit and Push Changes
         run: |
           cd "$GITHUB_WORKSPACE/claude"
 
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -123,15 +143,20 @@ jobs:
           if [[ -n $(git status -s) ]]; then
             git add .
             git commit -m "Claude Code: ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }}"
-            git push origin "${{ steps.claude-branch.outputs.BRANCH_NAME }}"
-            echo "Changes committed and pushed to branch ${{ steps.claude-branch.outputs.BRANCH_NAME }}"
+            git push origin "${{ steps.branch.outputs.BRANCH_NAME }}"
+            echo "Changes committed and pushed to branch ${{ steps.branch.outputs.BRANCH_NAME }}"
           else
             echo "No changes to commit"
           fi
 
       - name: Post Claude Response as Comment
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Authenticate gh CLI
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
           CLAUDE_OUTPUT=$(cat /tmp/claude_output.txt)
 
           # Post as comment on issue or PR
