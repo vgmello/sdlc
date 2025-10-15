@@ -18,6 +18,14 @@ if [ $# -gt 0 ]; then
 else
     echo "Running Claude Code..."
 
+    # Debug: check workspace contents
+    echo "Workspace contents:"
+    ls -la /workspace/ || echo "Failed to list /workspace"
+
+    echo "Checking for prompt files:"
+    echo "  System prompt file: $SYSTEM_PROMPT_FILE - exists: $([ -f "$SYSTEM_PROMPT_FILE" ] && echo 'yes' || echo 'no')"
+    echo "  User prompt file: $USER_PROMPT_FILE - exists: $([ -f "$USER_PROMPT_FILE" ] && echo 'yes' || echo 'no')"
+
     # Build claude command array
     CLAUDE_ARGS=(claude --continue --print --dangerously-skip-permissions)
 
@@ -34,6 +42,7 @@ else
         echo "Using user prompt from: $USER_PROMPT_FILE"
         "${CLAUDE_ARGS[@]}" < "$USER_PROMPT_FILE"
     else
+        echo "WARNING: No user prompt file found, running without stdin"
         exec "${CLAUDE_ARGS[@]}"
     fi
 fi
