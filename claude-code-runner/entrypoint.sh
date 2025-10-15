@@ -32,7 +32,7 @@ else
     # Pass user prompt via stdin if file exists
     if [ -f "$USER_PROMPT_FILE" ]; then
         echo "Using user prompt from: $USER_PROMPT_FILE"
-        cat "$USER_PROMPT_FILE" | exec "${CLAUDE_ARGS[@]}"
+        "${CLAUDE_ARGS[@]}" < "$USER_PROMPT_FILE"
     else
         exec "${CLAUDE_ARGS[@]}"
     fi
