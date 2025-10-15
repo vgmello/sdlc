@@ -64,13 +64,19 @@ jobs:
 
       - name: Run Claude Code
         run: |
+          # Prefer an explicit PAT with repo + workflow scopes if provided; otherwise use the job token
+          TOKEN="${{ secrets.GH_PAT }}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${{ github.token }}"
+          fi
+
           USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
 
           User request: ${{ steps.context.outputs.BODY }}"
 
           docker run --rm \
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
-            -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            -e GITHUB_TOKEN="$TOKEN" \
             -e GITHUB_REPOSITORY="${{ github.repository }}" \
             -e GITHUB_ACTOR="${{ github.actor }}" \
             -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
