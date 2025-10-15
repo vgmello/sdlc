@@ -18,7 +18,7 @@ if [ $# -gt 0 ]; then
 else
     echo "Running Claude Code..."
 
-    # Build claude command array to avoid eval issues
+    # Build claude command array
     CLAUDE_ARGS=(claude --continue --print --dangerously-skip-permissions)
 
     # Add system prompt if file exists
@@ -27,12 +27,13 @@ else
         echo "Using system prompt from: $SYSTEM_PROMPT_FILE"
     fi
 
-    # Add user prompt if file exists
-    if [ -f "$USER_PROMPT_FILE" ]; then
-        CLAUDE_ARGS+=("$(cat "$USER_PROMPT_FILE")")
-        echo "Using user prompt from: $USER_PROMPT_FILE"
-    fi
-
     echo "Command: ${CLAUDE_ARGS[@]}"
-    exec "${CLAUDE_ARGS[@]}"
+
+    # Pass user prompt via stdin if file exists
+    if [ -f "$USER_PROMPT_FILE" ]; then
+        echo "Using user prompt from: $USER_PROMPT_FILE"
+        cat "$USER_PROMPT_FILE" | exec "${CLAUDE_ARGS[@]}"
+    else
+        exec "${CLAUDE_ARGS[@]}"
+    fi
 fi
