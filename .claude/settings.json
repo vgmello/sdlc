@@ -1,0 +1,29 @@
+{
+  "project": {
+    "name": "SDLC - Claude Code Infrastructure",
+    "description": "Self-hosted GitHub Actions runners with Claude Code integration for automated issue handling"
+  },
+  "paths": {
+    "include": [
+      "sdlc.sh",
+      ".github/sdlc/**",
+      ".github/workflows/**",
+      ".claude/**",
+      "CLAUDE.md"
+    ],
+    "exclude": [
+      ".env",
+      "**/*.log",
+      "**/node_modules/**",
+      "**/.git/**"
+    ]
+  },
+  "features": {
+    "autoCommit": false,
+    "gitIntegration": true
+  },
+  "commands": {
+    "enabled": true,
+    "customCommandsPath": ".claude/commands"
+  }
+}
