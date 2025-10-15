@@ -12,8 +12,17 @@ if [ -z "$GITHUB_REPOSITORY" ]; then
     exit 1
 fi
 
-# Extract replica number from hostname (docker-compose adds suffix like -1, -2, etc.)
-REPLICA_NUM=$(hostname | grep -oP '\d+$' || echo "1")
+# Extract replica number from container name
+CONTAINER_ID=$(hostname)
+CONTAINER_NAME=$(docker inspect --format='{{.Name}}' "$CONTAINER_ID" 2>/dev/null | sed 's/^\///')
+
+if [ -n "$CONTAINER_NAME" ]; then
+    # Extract the number at the end of the container name (e.g., runner-github-runner-1 -> 1)
+    REPLICA_NUM=$(echo "$CONTAINER_NAME" | grep -oP '\d+$' || echo "1")
+else
+    # Fallback: use last 2 digits of container ID
+    REPLICA_NUM=$(echo "$CONTAINER_ID" | tail -c 3)
+fi
 
 # Build runner name: {prefix}-gh-runner-{replica} or gh-runner-{replica} if prefix is empty
 if [ -z "$RUNNER_PREFIX" ]; then
