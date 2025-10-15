@@ -156,7 +156,7 @@ COMMENT_BODY=$(jq -n \
     --arg type "$ISSUE_TYPE" \
     --arg number "$ISSUE_NUMBER" \
     '{
-        body: ("## Claude Code Response\n\n```\n" + $output + "\n```\n\n---\n*Triggered by @" + $actor + " on " + $type + " #" + $number + "*")
+        body: ("## Claude Code Response\n\n" + $output + "\n\n---\n*Triggered by @" + $actor + " on " + $type + " #" + $number + "*")
     }')
 
 curl -sS -X POST \
