@@ -80,7 +80,7 @@ jobs:
             -e GITHUB_REPOSITORY="${{ github.repository }}" \
             -e GITHUB_ACTOR="${{ github.actor }}" \
             -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
-            -e CLAUDE_BRANCH_NAME="${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}-claude" \
+            -e CLAUDE_BRANCH_NAME="claude-${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}" \
             -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
             -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
             -e USER_PROMPT="$USER_PROMPT" \
