@@ -71,7 +71,9 @@ jobs:
           CLAUDE_WORKSPACE="$GITHUB_WORKSPACE/claude"
 
           mkdir -p "$HOME/.claude/projects"
-          ln -sf "$CLAUDE_WORKSPACE" "$HOME/.claude/projects/-repo"
+          mkdir -p "$CLAUDE_WORKSPACE/claude"
+
+          ln -sf "$CLAUDE_WORKSPACE/claude" "$HOME/.claude/projects/-repo"
           ln -sf "$WORKSPACE_DIR" "/repo"
 
           echo "Symlink created: $HOME/.claude/projects/-repo -> $CLAUDE_WORKSPACE"
