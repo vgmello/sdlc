@@ -56,6 +56,22 @@ jobs:
               ;;
           esac
 
+          # Check if PR branch follows issue-{number} pattern
+          # If so, use the issue number for Claude branch but keep PR number for comments
+          CLAUDE_NUMBER="${NUMBER}"
+          CLAUDE_TYPE="${TYPE}"
+          if [ "${{ github.event_name }}" == "pull_request_review_comment" ] || [ "${{ github.event_name }}" == "pull_request_review" ]; then
+            BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+            if [[ "$BRANCH_NAME" =~ ^issue-([0-9]+)$ ]]; then
+              ISSUE_NUM="${BASH_REMATCH[1]}"
+              echo "Detected issue branch pattern: $BRANCH_NAME -> issue #$ISSUE_NUM"
+              CLAUDE_NUMBER="$ISSUE_NUM"
+              CLAUDE_TYPE="issue"
+            fi
+          fi
+          echo "CLAUDE_NUMBER=$CLAUDE_NUMBER" >> $GITHUB_OUTPUT
+          echo "CLAUDE_TYPE=$CLAUDE_TYPE" >> $GITHUB_OUTPUT
+
           # Remove @claude mentions
           BODY=$(echo "$BODY" | sed 's/@claude//g')
 
@@ -98,12 +114,8 @@ jobs:
             -e CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
             -e GITHUB_TOKEN="$TOKEN" \
             -e GITHUB_REPOSITORY="${{ github.repository }}" \
-            -e GITHUB_ACTOR="${{ github.actor }}" \
             -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
-            -e CLAUDE_BRANCH_NAME="claude-${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}" \
-            -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
-            -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
-            -e COMMENT_ID="${{ steps.context.outputs.COMMENT_ID }}" \
+            -e CLAUDE_BRANCH_NAME="claude-${{ steps.context.outputs.CLAUDE_TYPE }}-${{ steps.context.outputs.CLAUDE_NUMBER }}" \
             -e USER_PROMPT="$USER_PROMPT" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             sdlc-claude:latest

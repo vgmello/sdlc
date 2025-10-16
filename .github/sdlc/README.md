@@ -7,7 +7,7 @@ Automate your development workflow with Claude Code AI running on self-hosted Gi
 ### Prerequisites
 
 - Docker and docker-compose installed
-- A GitHub repository where you want to use Claude
+- A GitHub repository or organization where you want to use Claude
 - Claude Code CLI installed locally
 
 ### Step 1: Generate Claude OAuth Token
@@ -34,8 +34,9 @@ Copy the token value that is displayed.
 1. Go to: https://github.com/settings/personal-access-tokens
 2. Click **Generate new token**
 3. Give it a descriptive name (e.g., "SDLC Self-hosted Runner")
-4. Select Permissions:
-   - ✅ **Administration** (Read-write)
+4. Select Permissions based on your setup:
+   - **For Repository-level runners**: ✅ **Administration** (Read-write)
+   - **For Organization-level runners**: ✅ **Administration** (Read-write) for organization access
 5. Click **Generate token**
 6. **Copy the token** (you won't be able to see it again)
 
@@ -52,7 +53,9 @@ The script will:
 - Build the Claude Code Docker container
 - Prompt you for:
   - **GitHub Token**: Paste the personal access token from Step 3
-  - **Repository**: Enter your repository in format `owner/repo-name`
+  - **Repository or Organization**: Enter either:
+    - Repository format: `owner/repo-name` (for repository-level runners)
+    - Organization format: `org-name` (for organization-level runners available to all repos)
   - **Runner Prefix**: (Optional) A prefix for your runner names
 - Create the runner configuration automatically
 
@@ -66,8 +69,15 @@ This will start 5 self-hosted GitHub Actions runners.
 
 ### Step 6: Verify Setup
 
+**For Repository-level runners:**
+
 1. Go to your repository: **Settings** → **Actions** → **Runners**
 2. You should see 5 runners online (e.g., `gh-runner-1`, `gh-runner-2`, etc.)
+
+**For Organization-level runners:**
+
+1. Go to your organization: **Settings** → **Actions** → **Runners**
+2. You should see 5 runners online and available to all repositories in the organization
 
 ## 💬 Usage
 
