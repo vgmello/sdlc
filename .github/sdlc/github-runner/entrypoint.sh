@@ -39,25 +39,53 @@ if [ -z "$RUNNER_LABELS" ]; then
     RUNNER_LABELS="self-hosted,linux,docker"
 fi
 
+# Default to repo scope if not specified
+if [ -z "$RUNNER_SCOPE" ]; then
+    RUNNER_SCOPE="repo"
+fi
+
 echo "Configuring GitHub Actions Runner..."
-echo "Repository: $GITHUB_REPOSITORY"
+if [ "$RUNNER_SCOPE" = "org" ]; then
+    echo "Organization: $GITHUB_REPOSITORY"
+    echo "Scope: Organization-level runner"
+else
+    echo "Repository: $GITHUB_REPOSITORY"
+    echo "Scope: Repository-level runner"
+fi
 echo "Runner Name: $RUNNER_NAME"
 echo "Runner Labels: $RUNNER_LABELS"
 
-# Get registration token
+# Get registration token based on scope
+if [ "$RUNNER_SCOPE" = "org" ]; then
+    # Organization-level runner
+    API_URL="https://api.github.com/orgs/${GITHUB_REPOSITORY}/actions/runners/registration-token"
+    RUNNER_URL="https://github.com/${GITHUB_REPOSITORY}"
+else
+    # Repository-level runner
+    API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runners/registration-token"
+    RUNNER_URL="https://github.com/${GITHUB_REPOSITORY}"
+fi
+
 REGISTRATION_TOKEN=$(curl -s -X POST \
     -H "Authorization: token ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github.v3+json" \
-    "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" | jq -r .token)
+    "${API_URL}" | jq -r .token)
 
 if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
     echo "Error: Failed to get registration token"
+    echo "API URL: ${API_URL}"
+    echo "Make sure your token has the correct permissions:"
+    if [ "$RUNNER_SCOPE" = "org" ]; then
+        echo "  - For organization runners: 'admin:org' scope"
+    else
+        echo "  - For repository runners: 'repo' scope with admin access"
+    fi
     exit 1
 fi
 
 # Configure the runner
 ./config.sh \
-    --url "https://github.com/${GITHUB_REPOSITORY}" \
+    --url "${RUNNER_URL}" \
     --token "${REGISTRATION_TOKEN}" \
     --name "${RUNNER_NAME}" \
     --work "${RUNNER_WORKDIR}" \
