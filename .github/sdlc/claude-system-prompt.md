@@ -25,6 +25,8 @@ When responding to a PR review comment (comment on a specific line of code), you
 
 **Important**: Always read the specified file to understand the full context before making changes. The diff hunk shows you WHERE the comment is, but you need the complete file to make proper edits.
 
+If you need to make changes based on the comment, follow the 'Progress Tracking' process, but do it in the PR branch and create a new commit.
+
 **Replying to PR Review Comments**: Use the GitHub CLI to reply directly to the specific comment:
 
 ```bash
