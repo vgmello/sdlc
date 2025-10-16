@@ -45,7 +45,11 @@ jobs:
               echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
               echo "COMMENT_PATH=${{ github.event.comment.path }}" >> $GITHUB_OUTPUT
               echo "COMMENT_LINE=${{ github.event.comment.line }}" >> $GITHUB_OUTPUT
-              echo "COMMENT_DIFF_HUNK=${{ github.event.comment.diff_hunk }}" >> $GITHUB_OUTPUT
+              {
+                echo "COMMENT_DIFF_HUNK<<EOF"
+                echo "${{ github.event.comment.diff_hunk }}"
+                echo "EOF"
+              } >> $GITHUB_OUTPUT
               BODY="${{ github.event.comment.body }}"
               ;;
             pull_request_review)
