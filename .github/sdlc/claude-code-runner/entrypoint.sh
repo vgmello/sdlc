@@ -13,6 +13,29 @@ GITHUB_REF="${GITHUB_REF:-}"  # If empty, will use default branch
 CLAUDE_BRANCH_NAME="${CLAUDE_BRANCH_NAME:?Error: CLAUDE_BRANCH_NAME is required}"
 USER_PROMPT="${USER_PROMPT:?Error: USER_PROMPT is required}"
 
+# Validate CLAUDE_BRANCH_NAME is not just "claude--"
+if [[ "$CLAUDE_BRANCH_NAME" == "claude--" ]] || [[ "$CLAUDE_BRANCH_NAME" =~ ^claude--$ ]]; then
+    echo ""
+    echo "=========================================="
+    echo "ERROR: Invalid CLAUDE_BRANCH_NAME"
+    echo "=========================================="
+    echo ""
+    echo "CLAUDE_BRANCH_NAME is set to: '$CLAUDE_BRANCH_NAME'"
+    echo ""
+    echo "This indicates that the issue/PR number was not properly extracted."
+    echo "The branch name should be in format: claude-{type}-{number}"
+    echo "  Examples: claude-issue-123, claude-pr-456"
+    echo ""
+    echo "Possible causes:"
+    echo "  1. Workflow context extraction failed"
+    echo "  2. Issue/PR number is missing from the event"
+    echo "  3. Environment variable not properly passed to Docker"
+    echo ""
+    echo "=========================================="
+    echo ""
+    exit 1
+fi
+
 # Workspace directories
 WORKSPACE_DIR="/workspace"
 CLAUDE_STATE_DIR="/home/claude/.claude/projects/-workspace"
