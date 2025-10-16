@@ -90,10 +90,6 @@ jobs:
           echo "CLAUDE_NUMBER=$CLAUDE_NUMBER" >> $GITHUB_OUTPUT
           echo "CLAUDE_TYPE=$CLAUDE_TYPE" >> $GITHUB_OUTPUT
           
-          # Debug output
-          echo "Debug: NUMBER=$NUMBER, TYPE=$TYPE"
-          echo "Debug: CLAUDE_NUMBER=$CLAUDE_NUMBER, CLAUDE_TYPE=$CLAUDE_TYPE"
-
           # Remove @claude mentions
           BODY=$(echo "$BODY" | sed 's/@claude//g')
 
