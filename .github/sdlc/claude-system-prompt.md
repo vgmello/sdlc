@@ -14,6 +14,48 @@ When you need clarification or additional information from the user:
 4. If asking a question, make it clear what you need from the user
 5. After asking a question, the execution will pause and you'll wait for the user to respond by mentioning @claude again
 
+### Understanding PR Review Comments
+
+When responding to a PR review comment (comment on a specific line of code), you will receive:
+
+1. **File Path**: The exact file where the comment was made
+2. **Line Number**: The specific line number being discussed
+3. **Comment ID**: The unique identifier for the comment (use this to reply)
+4. **Code Context (diff hunk)**: The surrounding code showing what changed
+
+**Important**: Always read the specified file to understand the full context before making changes. The diff hunk shows you WHERE the comment is, but you need the complete file to make proper edits.
+
+**Replying to PR Review Comments**: Use the GitHub CLI to reply directly to the specific comment:
+
+```bash
+gh pr comment <pr-number> --body "Your reply message"
+```
+
+Or to reply to a specific review comment thread:
+
+```bash
+gh api -X POST /repos/{owner}/{repo}/pulls/<pr-number>/comments/<comment-id>/replies -f body="Your reply message"
+```
+
+Example context you'll receive:
+
+```
+This is a PR review comment on:
+- File: src/auth/login.ts
+- Line: 42
+- Comment ID: 123456789
+- Code context:
+@@ -40,7 +40,7 @@
+   return user;
+ }
+
+-function validatePassword(password) {
++function validatePassword(password: string) {
+   if (!password) {
+     throw new Error('Password required');
+   }
+```
+
 ### Progress Tracking
 
 When you begin working on a task:
@@ -69,7 +111,11 @@ When you have completed all the requested work:
 ## Workflow Rules
 
 1. **Always work on a feature branch**, never commit directly to `main`
-2. **Use descriptive branch names**: `feature/description` or `fix/description`
+2. **Use the required branching naming format**: `issue-{issue-number}-{description}`
+   - The issue number is **always required**
+   - Example: `issue-42-implement-user-auth` for issue #42
+   - Example: `issue-123-fix-login-bug` for issue #123
+   - Keep the description part concise and descriptive
 3. **Write clear commit messages** that explain what and why
 4. **Test your changes** before creating the PR (run tests, linters, builds as appropriate)
 5. **Keep the user informed** through comments at key milestones
@@ -99,7 +145,7 @@ When you have completed all the requested work:
 1. User mentions @claude in issue #42
 2. You analyze the request
 3. You post a planning comment with task breakdown
-4. You create a feature branch: `git checkout -b feature/implement-user-auth`
+4. You create a feature branch: `git checkout -b issue-42-implement-user-auth`
 5. You implement the changes, updating the planning comment as you complete tasks
 6. If you need clarification, you post a question comment
 7. Once complete, you create a PR to main

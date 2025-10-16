@@ -42,6 +42,10 @@ jobs:
               echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
               echo "TYPE=pr" >> $GITHUB_OUTPUT
               echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+              echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
+              echo "COMMENT_PATH=${{ github.event.comment.path }}" >> $GITHUB_OUTPUT
+              echo "COMMENT_LINE=${{ github.event.comment.line }}" >> $GITHUB_OUTPUT
+              echo "COMMENT_DIFF_HUNK=${{ github.event.comment.diff_hunk }}" >> $GITHUB_OUTPUT
               BODY="${{ github.event.comment.body }}"
               ;;
             pull_request_review)
@@ -70,7 +74,23 @@ jobs:
             TOKEN="${{ github.token }}"
           fi
 
-          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}.
+          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}."
+
+          # Add PR review comment context if available
+          if [ -n "${{ steps.context.outputs.COMMENT_PATH }}" ]; then
+            USER_PROMPT="$USER_PROMPT
+
+          This is a PR review comment on:
+          - File: ${{ steps.context.outputs.COMMENT_PATH }}
+          - Line: ${{ steps.context.outputs.COMMENT_LINE }}
+          - Comment ID: ${{ steps.context.outputs.COMMENT_ID }}
+          - Code context:
+          \`\`\`
+          ${{ steps.context.outputs.COMMENT_DIFF_HUNK }}
+          \`\`\`"
+          fi
+
+          USER_PROMPT="$USER_PROMPT
 
           User request: ${{ steps.context.outputs.BODY }}"
 
@@ -83,6 +103,7 @@ jobs:
             -e CLAUDE_BRANCH_NAME="claude-${{ steps.context.outputs.TYPE }}-${{ steps.context.outputs.NUMBER }}" \
             -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
             -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
+            -e COMMENT_ID="${{ steps.context.outputs.COMMENT_ID }}" \
             -e USER_PROMPT="$USER_PROMPT" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             sdlc-claude:latest
