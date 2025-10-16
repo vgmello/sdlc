@@ -27,6 +27,25 @@ show_usage() {
     exit 0
 }
 
+# Function to build Claude Code container
+build_claude_container() {
+    echo "================================================"
+    echo "  Building Claude Code Container"
+    echo "================================================"
+    echo ""
+    echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
+    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ Claude Code container built successfully!${NC}"
+    else
+        echo -e "${RED}✗ Failed to build Claude Code container${NC}"
+        exit 1
+    fi
+    echo ""
+}
+
 # Function to run setup
 run_setup() {
     echo "================================================"
@@ -59,22 +78,8 @@ run_setup() {
     echo ""
 
     # Build Claude Code container
-    echo "================================================"
-    echo "  Building Claude Code Container"
-    echo "================================================"
-    echo ""
-    echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
-    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
+    build_claude_container
 
-    if [ $? -eq 0 ]; then
-        echo ""
-        echo -e "${GREEN}✓ Claude Code container built successfully!${NC}"
-    else
-        echo -e "${RED}✗ Failed to build Claude Code container${NC}"
-        exit 1
-    fi
-
-    echo ""
     echo "================================================"
     echo "  Creating Runner Configuration"
     echo "================================================"
@@ -224,6 +229,9 @@ start_runners() {
     echo "================================================"
     echo ""
 
+    # Build Claude Code container first
+    build_claude_container
+
     # Check if .env file exists
     if [ ! -f "$GITHUB_RUNNER_DIR/.env" ]; then
         echo -e "${RED}Error: Configuration file not found!${NC}"
@@ -245,7 +253,7 @@ start_runners() {
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose up -d
+    docker-compose up --build -d
 
     if [ $? -eq 0 ]; then
         echo ""
