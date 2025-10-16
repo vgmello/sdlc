@@ -13,6 +13,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GITHUB_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/github-runner"
 CLAUDE_CODE_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/claude-code-runner"
 
+# Project name from git repository (folder name)
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+
+# Default runner prefix from hostname
+DEFAULT_RUNNER_PREFIX="$(hostname)"
+
 # Function to display usage
 show_usage() {
     echo "Usage: $0 [--setup|--stop]"
@@ -187,9 +193,15 @@ run_setup() {
         # Prompt for Runner Prefix (optional)
         echo -e "${YELLOW}3. Runner Name Prefix (optional)${NC}"
         echo "   Runners will be named: {prefix}-gh-runner-1, {prefix}-gh-runner-2, etc."
-        echo "   Leave empty for default naming (gh-runner-1, gh-runner-2, etc.)"
+        echo "   Default prefix: $DEFAULT_RUNNER_PREFIX (hostname)"
         echo ""
-        read -p "   Enter prefix (or press Enter to skip): " RUNNER_PREFIX
+        read -p "   Enter prefix (or press Enter for default '$DEFAULT_RUNNER_PREFIX'): " RUNNER_PREFIX
+
+        # Use hostname as default if empty
+        if [ -z "$RUNNER_PREFIX" ]; then
+            RUNNER_PREFIX="$DEFAULT_RUNNER_PREFIX"
+            echo -e "${GREEN}   ✓ Using default prefix: $RUNNER_PREFIX${NC}"
+        fi
 
         echo ""
         echo -e "${BLUE}Creating .env file...${NC}"
@@ -256,10 +268,11 @@ start_runners() {
     env_validation
 
     echo -e "${BLUE}Starting runners with docker-compose...${NC}"
+    echo -e "${BLUE}Project name: $PROJECT_NAME${NC}"
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose up --build -d
+    docker-compose -p "$PROJECT_NAME" up --build -d
 
     if [ $? -eq 0 ]; then
         echo ""
@@ -269,10 +282,10 @@ start_runners() {
         echo -e "  ${BLUE}./sdlc.sh --stop${NC}"
         echo ""
         echo "To check status:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose ps${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME ps${NC}"
         echo ""
         echo "To view logs:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose logs -f${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME logs -f${NC}"
         echo ""
     else
         echo -e "${RED}✗ Failed to start runners${NC}"
@@ -287,10 +300,11 @@ stop_runners() {
     env_validation
 
     echo -e "${BLUE}Stopping runners with docker-compose...${NC}"
+    echo -e "${BLUE}Project name: $PROJECT_NAME${NC}"
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose down
+    docker-compose -p "$PROJECT_NAME" down
 
     if [ $? -eq 0 ]; then
         echo ""
