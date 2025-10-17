@@ -23,7 +23,21 @@ A self-hosted GitHub Actions infrastructure that integrates Claude Code AI assis
 
 ## Quick Start
 
-### 1. Initial Setup
+### 1. Verify Docker Setup (Recommended)
+
+Before setting up, verify your Docker installation and permissions:
+
+```bash
+./sdlc.sh --fix-permissions
+```
+
+This will:
+- Check if Docker is installed and running
+- Verify your user has permission to run Docker commands
+- Test Docker socket access from containers
+- Provide platform-specific guidance if issues are found
+
+### 2. Initial Setup
 
 Run the setup script to configure your environment:
 
@@ -37,8 +51,9 @@ This will:
 - Configure your repository or organization
 - Set up runner preferences (prefix, number of runners)
 - Create the necessary `.env` configuration file
+- **Verify Docker permissions before proceeding**
 
-### 2. Configure GitHub Secrets
+### 3. Configure GitHub Secrets
 
 In your GitHub repository settings:
 1. Go to **Settings → Secrets and variables → Actions**
@@ -48,7 +63,7 @@ In your GitHub repository settings:
 Optional:
    - `GH_PAT`: A GitHub Personal Access Token with `repo` and `workflow` scopes
 
-### 3. Start the Runners
+### 4. Start the Runners
 
 ```bash
 ./sdlc.sh
@@ -56,13 +71,13 @@ Optional:
 
 This starts the self-hosted GitHub Actions runners using docker-compose.
 
-### 4. Verify Runners
+### 5. Verify Runners
 
 Check that your runners are online:
 1. Go to **Settings → Actions → Runners** in your GitHub repository
 2. You should see your configured number of runners (default: 5) online
 
-### 5. Use Claude Code
+### 6. Use Claude Code
 
 Create an issue or comment on a PR and mention `@claude` with your request:
 
@@ -173,6 +188,32 @@ Examples:
 - `issue-123-fix-login-bug`
 
 ## Troubleshooting
+
+### Docker Permission Issues
+
+If you encounter Docker permission errors:
+
+```bash
+./sdlc.sh --fix-permissions
+```
+
+This diagnostic tool will:
+- Check if Docker is installed and running
+- Verify user permissions to run Docker commands
+- Test Docker socket access from containers
+- Provide platform-specific solutions
+
+**Common issues:**
+
+**On macOS:**
+- Ensure Docker Desktop is running
+- Check the whale icon in the menu bar
+- Restart Docker Desktop if needed
+
+**On Linux:**
+- Add your user to the docker group: `sudo usermod -aG docker $USER`
+- Log out and back in, or run: `newgrp docker`
+- Ensure Docker service is running: `sudo systemctl start docker`
 
 ### Runners not showing up in GitHub
 

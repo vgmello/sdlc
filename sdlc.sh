@@ -21,17 +21,19 @@ DEFAULT_RUNNER_PREFIX="$(hostname)"
 
 # Function to display usage
 show_usage() {
-    echo "Usage: $0 [--setup|--stop]"
+    echo "Usage: $0 [--setup|--stop|--fix-permissions]"
     echo ""
     echo "Options:"
-    echo "  --setup    Run initial setup (build containers and configure runners)"
-    echo "  --stop     Stop the GitHub Actions runners"
-    echo "  (no flag)  Start the GitHub Actions runners (docker-compose up -d)"
+    echo "  --setup             Run initial setup (build containers and configure runners)"
+    echo "  --stop              Stop the GitHub Actions runners"
+    echo "  --fix-permissions   Diagnose and fix Docker permission issues"
+    echo "  (no flag)           Start the GitHub Actions runners (docker-compose up -d)"
     echo ""
     echo "Examples:"
-    echo "  $0 --setup    # First-time setup"
-    echo "  $0            # Start runners"
-    echo "  $0 --stop     # Stop runners"
+    echo "  $0 --setup             # First-time setup"
+    echo "  $0                     # Start runners"
+    echo "  $0 --stop              # Stop runners"
+    echo "  $0 --fix-permissions   # Fix Docker permissions"
     exit 0
 }
 
@@ -51,6 +53,239 @@ check_docker_compose() {
         echo "Install it from: https://docs.docker.com/compose/install/"
         exit 1
     fi
+}
+
+# Function to check Docker permissions
+check_docker_permissions() {
+    echo -e "${BLUE}Checking Docker permissions...${NC}"
+    
+    # Check if Docker daemon is running
+    if ! docker info &> /dev/null; then
+        echo -e "${RED}✗ Cannot connect to Docker daemon${NC}"
+        echo ""
+        echo "Possible issues:"
+        echo "  1. Docker is not running"
+        echo "  2. Your user doesn't have permission to access Docker"
+        echo ""
+        
+        # Detect OS and provide specific guidance
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "On macOS:"
+            echo "  - Make sure Docker Desktop is running"
+            echo "  - Check if Docker Desktop is properly installed"
+            echo "  - Try restarting Docker Desktop"
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            echo "On Linux:"
+            echo "  - Make sure Docker service is running: sudo systemctl start docker"
+            echo "  - Add your user to docker group: sudo usermod -aG docker $USER"
+            echo "  - Log out and back in for group changes to take effect"
+            echo "  - Or run: newgrp docker"
+        fi
+        echo ""
+        echo "Run '$0 --fix-permissions' for automated help"
+        return 1
+    fi
+    
+    # Check if user can run Docker without sudo
+    if ! docker ps &> /dev/null; then
+        echo -e "${RED}✗ Cannot run Docker commands${NC}"
+        echo ""
+        echo "Your Docker daemon is running, but you don't have permission to use it."
+        echo "Run '$0 --fix-permissions' for help fixing this issue"
+        return 1
+    fi
+    
+    # Check Docker socket permissions
+    if [ ! -S "/var/run/docker.sock" ]; then
+        echo -e "${RED}✗ Docker socket not found at /var/run/docker.sock${NC}"
+        echo ""
+        echo "This might indicate a non-standard Docker installation."
+        return 1
+    fi
+    
+    echo -e "${GREEN}✓ Docker permissions OK${NC}"
+    return 0
+}
+
+# Function to test Docker socket access from container
+test_docker_in_container() {
+    echo -e "${BLUE}Testing Docker access from container...${NC}"
+    
+    # Try to run a simple Docker command from within a container
+    if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        ubuntu:24.04 test -S /var/run/docker.sock 2>/dev/null; then
+        echo -e "${GREEN}✓ Container can access Docker socket${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠ Container might have issues accessing Docker socket${NC}"
+        return 1
+    fi
+}
+
+# Function to diagnose and fix Docker permissions
+fix_docker_permissions() {
+    print_section_header "Docker Permissions Diagnostic & Fix"
+    
+    # Check if Docker is installed
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}✗ Docker is not installed${NC}"
+        echo ""
+        echo "Please install Docker first:"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "  Download Docker Desktop: https://docs.docker.com/desktop/install/mac-install/"
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            echo "  Follow instructions: https://docs.docker.com/engine/install/"
+        fi
+        return 1
+    fi
+    
+    echo -e "${GREEN}✓ Docker is installed${NC}"
+    echo ""
+    
+    # Check if Docker daemon is running
+    echo -e "${BLUE}Checking Docker daemon...${NC}"
+    if ! docker info &> /dev/null; then
+        echo -e "${RED}✗ Docker daemon is not accessible${NC}"
+        echo ""
+        
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            echo -e "${YELLOW}macOS detected${NC}"
+            echo ""
+            echo "Steps to fix:"
+            echo "  1. Open Docker Desktop application"
+            echo "  2. Wait for Docker to start (whale icon in menu bar)"
+            echo "  3. Verify it's running: docker info"
+            echo ""
+            echo "If Docker Desktop is installed but not running:"
+            echo "  - Open it from Applications folder"
+            echo "  - Or run: open -a Docker"
+            echo ""
+            
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            # Linux
+            echo -e "${YELLOW}Linux detected${NC}"
+            echo ""
+            echo "Steps to fix:"
+            echo "  1. Start Docker service:"
+            echo "     sudo systemctl start docker"
+            echo ""
+            echo "  2. Enable Docker to start on boot:"
+            echo "     sudo systemctl enable docker"
+            echo ""
+            echo "  3. Check Docker status:"
+            echo "     sudo systemctl status docker"
+            echo ""
+        fi
+        
+        read -p "Press Enter after starting Docker to continue, or Ctrl+C to exit..."
+        
+        # Re-check
+        if ! docker info &> /dev/null; then
+            echo -e "${RED}✗ Docker is still not accessible${NC}"
+            echo "Please ensure Docker is running and try again."
+            return 1
+        fi
+    fi
+    
+    echo -e "${GREEN}✓ Docker daemon is running${NC}"
+    echo ""
+    
+    # Check if user can run Docker without sudo
+    echo -e "${BLUE}Checking Docker permissions for current user...${NC}"
+    if ! docker ps &> /dev/null; then
+        echo -e "${RED}✗ Current user cannot run Docker commands${NC}"
+        echo ""
+        
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            # Linux - need to add user to docker group
+            echo -e "${YELLOW}Your user needs to be added to the 'docker' group${NC}"
+            echo ""
+            echo "To fix this, run the following commands:"
+            echo ""
+            echo -e "${BLUE}  sudo usermod -aG docker $USER${NC}"
+            echo -e "${BLUE}  newgrp docker${NC}"
+            echo ""
+            echo "Or log out and log back in for the changes to take effect."
+            echo ""
+            
+            read -p "Would you like me to add your user to the docker group now? (y/n): " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                if sudo usermod -aG docker "$USER"; then
+                    echo -e "${GREEN}✓ User added to docker group${NC}"
+                    echo ""
+                    echo "Please run one of the following:"
+                    echo "  1. Log out and log back in"
+                    echo "  2. Or run: newgrp docker"
+                    echo ""
+                    echo "Then run this script again to verify."
+                    return 0
+                else
+                    echo -e "${RED}✗ Failed to add user to docker group${NC}"
+                    return 1
+                fi
+            fi
+            
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS - should work with Docker Desktop
+            echo -e "${YELLOW}On macOS with Docker Desktop, this usually works automatically${NC}"
+            echo ""
+            echo "Possible fixes:"
+            echo "  1. Restart Docker Desktop"
+            echo "  2. Reinstall Docker Desktop"
+            echo "  3. Check Docker Desktop Settings → Advanced → Enable default Docker socket"
+            echo ""
+        fi
+        
+        return 1
+    fi
+    
+    echo -e "${GREEN}✓ User can run Docker commands${NC}"
+    echo ""
+    
+    # Test Docker socket from within a container
+    echo -e "${BLUE}Testing Docker socket access from container...${NC}"
+    TEST_OUTPUT=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        ubuntu:24.04 sh -c "ls -la /var/run/docker.sock 2>&1" 2>&1)
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Container can access Docker socket${NC}"
+        echo ""
+        echo "Socket permissions:"
+        echo "$TEST_OUTPUT"
+        echo ""
+        
+        # Try to run docker command from container
+        echo -e "${BLUE}Testing Docker command execution from container...${NC}"
+        if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            docker:24-cli docker ps &> /dev/null; then
+            echo -e "${GREEN}✓ Container can execute Docker commands${NC}"
+            echo ""
+            echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${GREEN}✓ All Docker permission checks passed!${NC}"
+            echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo "Your Docker setup is properly configured for SDLC."
+            echo "You can now run: $0 --setup"
+            return 0
+        else
+            echo -e "${YELLOW}⚠ Container can see socket but cannot execute Docker commands${NC}"
+            echo ""
+            echo "This might be a Docker-in-Docker configuration issue."
+            echo "The SDLC runners might still work, but there could be issues."
+        fi
+    else
+        echo -e "${RED}✗ Container cannot access Docker socket${NC}"
+        echo ""
+        echo "Error output:"
+        echo "$TEST_OUTPUT"
+        echo ""
+        echo "This is unusual and might indicate a complex Docker configuration issue."
+    fi
+    
+    echo ""
+    echo "Summary of findings and next steps above."
 }
 
 # Function to check if .env file exists
@@ -119,6 +354,18 @@ run_setup() {
     # Check if docker-compose is installed
     check_docker_compose
     echo -e "${BLUE}✓ docker-compose found${NC}"
+
+    echo ""
+
+    # Check Docker permissions
+    if ! check_docker_permissions; then
+        echo ""
+        echo -e "${RED}✗ Docker permissions check failed${NC}"
+        echo ""
+        echo "Please fix Docker permissions before continuing."
+        echo "Run: ${BLUE}$0 --fix-permissions${NC}"
+        exit 1
+    fi
 
     echo ""
 
@@ -299,6 +546,18 @@ EOF
 start_runners() {
     print_section_header "Starting GitHub Actions Runners"
 
+    # Check Docker permissions before starting
+    if ! check_docker_permissions; then
+        echo ""
+        echo -e "${RED}✗ Docker permissions check failed${NC}"
+        echo ""
+        echo "Please fix Docker permissions before starting runners."
+        echo "Run: ${BLUE}$0 --fix-permissions${NC}"
+        exit 1
+    fi
+
+    echo ""
+
     # Build Claude Code container first
     build_claude_container
 
@@ -368,6 +627,9 @@ case "${1:-}" in
         ;;
     --stop)
         stop_runners
+        ;;
+    --fix-permissions)
+        fix_docker_permissions
         ;;
     --help|-h|help)
         show_usage

@@ -1,6 +1,41 @@
 #!/bin/bash
 set -e
 
+# Fix Docker socket permissions if needed
+if [ -S "/var/run/docker.sock" ]; then
+    echo "Checking Docker socket permissions..."
+    
+    # Get the GID of the docker socket on the host
+    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+    
+    if [ -n "$DOCKER_SOCK_GID" ]; then
+        echo "Docker socket GID: $DOCKER_SOCK_GID"
+        
+        # Check if a group with this GID already exists
+        if ! getent group "$DOCKER_SOCK_GID" > /dev/null 2>&1; then
+            echo "Creating docker group with GID $DOCKER_SOCK_GID..."
+            sudo groupadd -g "$DOCKER_SOCK_GID" docker 2>/dev/null || true
+        fi
+        
+        # Add runner user to the docker group
+        DOCKER_GROUP_NAME=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1)
+        echo "Adding runner user to group: $DOCKER_GROUP_NAME"
+        sudo usermod -aG "$DOCKER_GROUP_NAME" runner 2>/dev/null || true
+        
+        # Verify docker access
+        if sudo -u runner docker ps > /dev/null 2>&1; then
+            echo "✓ Docker access verified for runner user"
+        else
+            echo "⚠ Warning: Runner user may not have Docker access"
+            echo "This might cause issues when running workflows"
+        fi
+    else
+        echo "⚠ Warning: Could not determine Docker socket GID"
+    fi
+else
+    echo "⚠ Warning: Docker socket not found at /var/run/docker.sock"
+fi
+
 # Check required environment variables
 if [ -z "$GITHUB_TOKEN" ]; then
     echo "Error: GITHUB_TOKEN environment variable is required"
