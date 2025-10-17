@@ -204,6 +204,40 @@ run_setup() {
         fi
 
         echo ""
+
+        # Prompt for Number of Runners (optional)
+        echo -e "${YELLOW}4. Number of Runner Replications${NC}"
+        echo "   How many parallel runners do you want to run?"
+        echo "   Default: 5"
+        echo ""
+        
+        while true; do
+            read -p "   Enter number of runners (1-20, or press Enter for default '5'): " RUNNER_REPLICATIONS
+            
+            # Use default if empty
+            if [ -z "$RUNNER_REPLICATIONS" ]; then
+                RUNNER_REPLICATIONS=5
+                echo -e "${GREEN}   ✓ Using default: $RUNNER_REPLICATIONS runners${NC}"
+                break
+            fi
+            
+            # Validate it's a number
+            if ! [[ "$RUNNER_REPLICATIONS" =~ ^[0-9]+$ ]]; then
+                echo -e "${YELLOW}   Error: Please enter a valid number${NC}"
+                continue
+            fi
+            
+            # Validate range
+            if [ "$RUNNER_REPLICATIONS" -lt 1 ] || [ "$RUNNER_REPLICATIONS" -gt 20 ]; then
+                echo -e "${YELLOW}   Error: Number must be between 1 and 20${NC}"
+                continue
+            fi
+            
+            echo -e "${GREEN}   ✓ Will create $RUNNER_REPLICATIONS runners${NC}"
+            break
+        done
+
+        echo ""
         echo -e "${BLUE}Creating .env file...${NC}"
 
         # Create .env file with provided values
@@ -223,6 +257,9 @@ RUNNER_SCOPE=$RUNNER_SCOPE
 # Optional: Prefix for runner names (default: none)
 # Runners will be named: {prefix}-gh-runner-1, {prefix}-gh-runner-2, etc.
 RUNNER_PREFIX=$RUNNER_PREFIX
+
+# Number of runner replications (default: 5)
+RUNNER_REPLICATIONS=$RUNNER_REPLICATIONS
 EOF
 
         echo -e "${GREEN}✓ Created .env file with your configuration${NC}"
@@ -247,7 +284,7 @@ EOF
     echo ""
     echo "3. Verify runners are registered:"
     echo "   Go to: Settings → Actions → Runners"
-    echo "   You should see 5 runners online"
+    echo "   You should see ${RUNNER_REPLICATIONS:-5} runners online"
     echo ""
     echo "4. Test the workflow:"
     echo "   - Create an issue in your repository"
@@ -267,12 +304,17 @@ start_runners() {
 
     env_validation
 
+    # Load environment variables to get RUNNER_REPLICATIONS
+    source "$GITHUB_RUNNER_DIR/.env"
+    RUNNER_COUNT=${RUNNER_REPLICATIONS:-5}
+
     echo -e "${BLUE}Starting runners with docker-compose...${NC}"
     echo -e "${BLUE}Project name: $PROJECT_NAME${NC}"
+    echo -e "${BLUE}Number of runners: $RUNNER_COUNT${NC}"
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose -p "$PROJECT_NAME" up --build -d
+    docker-compose -p "$PROJECT_NAME" up --build -d --scale github-runner=$RUNNER_COUNT
 
     if [ $? -eq 0 ]; then
         echo ""
