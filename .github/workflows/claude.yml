@@ -31,7 +31,8 @@ jobs:
           NUMBER=""
           TYPE=""
           BODY=""
-          
+          ACTOR=""
+
           case "${{ github.event_name }}" in
             issues)
               echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
@@ -39,6 +40,7 @@ jobs:
               NUMBER="${{ github.event.issue.number }}"
               TYPE="issue"
               BODY="${{ github.event.issue.body }}"
+              ACTOR="${{ github.event.issue.user.login }}"
               ;;
             issue_comment)
               echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
@@ -46,6 +48,7 @@ jobs:
               NUMBER="${{ github.event.issue.number }}"
               TYPE="issue"
               BODY="${{ github.event.comment.body }}"
+              ACTOR="${{ github.event.comment.user.login }}"
               ;;
             pull_request_review_comment)
               echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
@@ -58,10 +61,11 @@ jobs:
               echo "COMMENT_LINE=${{ github.event.comment.line }}" >> $GITHUB_OUTPUT
               {
                 echo "COMMENT_DIFF_HUNK<<EOF"
-                echo "${{ github.event.comment.diff_hunk }}"
+                echo "${{ github.event.comment.diff_hunk }}" | head -n 5
                 echo "EOF"
               } >> $GITHUB_OUTPUT
               BODY="${{ github.event.comment.body }}"
+              ACTOR="${{ github.event.comment.user.login }}"
               ;;
             pull_request_review)
               echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
@@ -70,8 +74,11 @@ jobs:
               TYPE="pr"
               echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
               BODY="${{ github.event.review.body }}"
+              ACTOR="${{ github.event.review.user.login }}"
               ;;
           esac
+
+          echo "ACTOR=$ACTOR" >> $GITHUB_OUTPUT
 
           # Check if PR branch follows issue-{number} pattern
           # If so, use the issue number for Claude branch but keep PR number for comments
@@ -86,10 +93,10 @@ jobs:
               CLAUDE_TYPE="issue"
             fi
           fi
-          
+
           echo "CLAUDE_NUMBER=$CLAUDE_NUMBER" >> $GITHUB_OUTPUT
           echo "CLAUDE_TYPE=$CLAUDE_TYPE" >> $GITHUB_OUTPUT
-          
+
           # Remove @claude mentions
           BODY=$(echo "$BODY" | sed 's/@claude//g')
 
@@ -100,7 +107,54 @@ jobs:
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
+      - name: Check User Permissions
+        id: permission_check
+        run: |
+          # Prefer an explicit PAT with repo + workflow scopes if provided; otherwise use the job token
+          TOKEN="${{ secrets.GH_PAT }}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${{ github.token }}"
+          fi
+
+          # Get the user's permission level using GitHub API
+          ACTOR="${{ steps.context.outputs.ACTOR }}"
+          REPO="${{ github.repository }}"
+
+          echo "Checking permissions for user: $ACTOR"
+
+          # Query GitHub API for user's permission level
+          PERMISSION_RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/collaborators/$ACTOR/permission")
+
+          PERMISSION=$(echo "$PERMISSION_RESPONSE" | jq -r '.permission // "none"')
+
+          echo "User $ACTOR has permission level: $PERMISSION"
+
+          # Check if user has write, maintain, or admin permission
+          if [[ "$PERMISSION" == "write" || "$PERMISSION" == "maintain" || "$PERMISSION" == "admin" ]]; then
+            echo "has_permission=true" >> $GITHUB_OUTPUT
+            echo "✅ User $ACTOR has sufficient permissions ($PERMISSION)"
+          else
+            echo "has_permission=false" >> $GITHUB_OUTPUT
+            echo "❌ User $ACTOR does not have sufficient permissions (current: $PERMISSION, required: write or above)"
+
+            TYPE="${{ steps.context.outputs.TYPE }}"
+            NUMBER="${{ steps.context.outputs.NUMBER }}"
+
+            COMMENT_BODY="⚠️ **Permission Denied**
+
+            Hi @$ACTOR, you need write access or higher to use the Claude workflow."
+            
+            if [ "$TYPE" == "issue" ]; then
+              gh issue comment "$NUMBER" --body "$COMMENT_BODY"
+            else
+              gh pr comment "$NUMBER" --body "$COMMENT_BODY"
+            fi
+          fi
+
       - name: Run Claude Code
+        if: steps.permission_check.outputs.has_permission == 'true'
         run: |
           # Prefer an explicit PAT with repo + workflow scopes if provided; otherwise use the job token
           TOKEN="${{ secrets.GH_PAT }}"
