@@ -1,0 +1,53 @@
+name: Cleanup AI Agent State Branch
+
+on:
+  delete:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    if: |
+      (github.event_name == 'delete' && github.event.ref_type == 'branch' && startswith(github.event.ref, 'issue-')) ||
+      (github.event_name == 'pull_request')
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract issue/PR number from deleted branch
+        id: extract
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            DELETED_BRANCH="${{ github.event.pull_request.head.ref }}"
+            if [[ $DELETED_BRANCH =~ ^(issue|pr)-([0-9]+) ]]; then
+              BRANCH_TYPE="${BASH_REMATCH[1]}"; ISSUE_NUMBER="${BASH_REMATCH[2]}"
+            else
+              BRANCH_TYPE="pr"; ISSUE_NUMBER="$PR_NUMBER"
+            fi
+          else
+            DELETED_BRANCH="${{ github.event.ref }}"
+            if [[ $DELETED_BRANCH =~ ^(issue|pr)-([0-9]+) ]]; then
+              BRANCH_TYPE="${BASH_REMATCH[1]}"; ISSUE_NUMBER="${BASH_REMATCH[2]}"
+            else
+              exit 0
+            fi
+          fi
+          echo "BRANCH_TYPE=$BRANCH_TYPE" >> $GITHUB_OUTPUT
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Delete corresponding agent state branch
+        if: steps.extract.outputs.ISSUE_NUMBER
+        run: |
+          AGENT_BRANCH="agent-${{ steps.extract.outputs.BRANCH_TYPE }}-${{ steps.extract.outputs.ISSUE_NUMBER }}"
+          if git ls-remote --heads origin "$AGENT_BRANCH" | grep -q "$AGENT_BRANCH"; then
+            git push origin --delete "$AGENT_BRANCH"
+            echo "✅ Successfully deleted agent state branch: $AGENT_BRANCH"
+          fi

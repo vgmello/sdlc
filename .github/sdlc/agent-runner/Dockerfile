@@ -28,20 +28,20 @@ RUN apt-get update && \
     # Cleanup
     rm -rf /var/lib/apt/lists/* /tmp/githubcli-archive-keyring.gpg
 
-# Create claude user with sudo access and workspace directory
-RUN useradd -m -s /bin/bash claude && \
+# Create agent user with sudo access and workspace directory
+RUN useradd -m -s /bin/bash agent && \
     mkdir -p /workspace && \
-    chown -R claude:claude /workspace && \
-    usermod -aG sudo claude && \
-    echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude && \
-    chmod 0440 /etc/sudoers.d/claude
+    chown -R agent:agent /workspace && \
+    usermod -aG sudo agent && \
+    echo "agent ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agent && \
+    chmod 0440 /etc/sudoers.d/agent
 
-# Switch to claude user (non-root installs)
-USER claude
+# Switch to agent user (non-root installs)
+USER agent
 
-# Set up environment for claude user
-ENV NVM_DIR="/home/claude/.nvm" \
-    PATH="/home/claude/.nvm/versions/node/default/bin:/home/claude/.local/bin:$PATH"
+# Set up environment for agent user
+ENV NVM_DIR="/home/agent/.nvm" \
+    PATH="/home/agent/.nvm/versions/node/default/bin:/home/agent/.local/bin:$PATH"
 
 # Install nvm and Node.js
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash && \
@@ -50,14 +50,18 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | b
     nvm alias default 22 && \
     nvm use default && \
     # Add node to PATH
-    echo 'export NVM_DIR="$HOME/.nvm"' >> /home/claude/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> /home/claude/.bashrc && \
-    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> /home/claude/.bashrc
+    echo 'export NVM_DIR="$HOME/.nvm"' >> /home/agent/.bashrc && \
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> /home/agent/.bashrc && \
+    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> /home/agent/.bashrc
 
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+# Install Aider (OpenAI Codex CLI tool)
+RUN pip3 install --user --break-system-packages aider-chat
+
 COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chmod=755 agents/ /usr/local/bin/agents/
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

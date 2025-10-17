@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 # Directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GITHUB_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/github-runner"
-CLAUDE_CODE_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/claude-code-runner"
+AGENT_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/agent-runner"
 
 # Project name from git repository (folder name)
 PROJECT_NAME="$(basename "$SCRIPT_DIR")"
@@ -93,16 +93,16 @@ validate_non_empty() {
 }
 
 # Function to build Claude Code container
-build_claude_container() {
-    print_section_header "Building Claude Code Container"
-    echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
-    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
+build_agent_container() {
+    print_section_header "Building AI Agent Container"
+    echo -e "${BLUE}Building sdlc-agent:latest...${NC}"
+    docker build -t sdlc-agent:latest "$AGENT_RUNNER_DIR"
 
     if [ $? -eq 0 ]; then
         echo ""
-        echo -e "${GREEN}✓ Claude Code container built successfully!${NC}"
+        echo -e "${GREEN}✓ AI Agent container built successfully!${NC}"
     else
-        echo -e "${RED}✗ Failed to build Claude Code container${NC}"
+        echo -e "${RED}✗ Failed to build AI Agent container${NC}"
         exit 1
     fi
     echo ""
@@ -110,7 +110,7 @@ build_claude_container() {
 
 # Function to run setup
 run_setup() {
-    print_section_header "SDLC - Claude Code Infrastructure Setup"
+    print_section_header "SDLC - AI Agent Infrastructure Setup"
 
     # Check if Docker is installed
     check_docker
@@ -123,7 +123,7 @@ run_setup() {
     echo ""
 
     # Build Claude Code container
-    build_claude_container
+    build_agent_container
 
     print_section_header "Creating Runner Configuration"
 
@@ -270,13 +270,14 @@ EOF
 
     echo ""
     print_section_header "Setup Complete!"
-    echo -e "${GREEN}✓ Docker image 'sdlc-claude:latest' is ready${NC}"
+    echo -e "${GREEN}✓ Docker image 'sdlc-agent:latest' is ready${NC}"
     echo -e "${GREEN}✓ Runner configuration file created${NC}"
     echo ""
     print_section_header "Next Steps"
     echo "1. Configure GitHub Secret (in repository settings):"
     echo "   Go to: Settings → Secrets and variables → Actions"
-    echo "   - CLAUDE_CODE_OAUTH_TOKEN: Your Claude Code OAuth token"
+    echo "   - CLAUDE_CODE_OAUTH_TOKEN: Your Claude Code OAuth token (for @claude agent)
+   - CODEX_OAUTH_TOKEN: Your OpenAI API key (for @codex agent)"
     echo ""
     echo "2. Start the self-hosted GitHub Actions runners:"
     echo ""
@@ -288,8 +289,8 @@ EOF
     echo ""
     echo "4. Test the workflow:"
     echo "   - Create an issue in your repository"
-    echo "   - Mention @claude in the issue description or comments"
-    echo "   - Claude will respond and work on your request"
+    echo "   - Mention @claude or @codex in the issue description or comments"
+    echo "   - The AI agent will respond and work on your request"
     echo ""
     echo "================================================"
     echo ""
@@ -300,7 +301,7 @@ start_runners() {
     print_section_header "Starting GitHub Actions Runners"
 
     # Build Claude Code container first
-    build_claude_container
+    build_agent_container
 
     env_validation
 
