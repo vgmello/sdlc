@@ -27,20 +27,31 @@ jobs:
       - name: Extract Context
         id: context
         run: |
+          # Initialize variables
+          NUMBER=""
+          TYPE=""
+          BODY=""
+          
           case "${{ github.event_name }}" in
             issues)
               echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
               echo "TYPE=issue" >> $GITHUB_OUTPUT
+              NUMBER="${{ github.event.issue.number }}"
+              TYPE="issue"
               BODY="${{ github.event.issue.body }}"
               ;;
             issue_comment)
               echo "NUMBER=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
               echo "TYPE=issue" >> $GITHUB_OUTPUT
+              NUMBER="${{ github.event.issue.number }}"
+              TYPE="issue"
               BODY="${{ github.event.comment.body }}"
               ;;
             pull_request_review_comment)
               echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
               echo "TYPE=pr" >> $GITHUB_OUTPUT
+              NUMBER="${{ github.event.pull_request.number }}"
+              TYPE="pr"
               echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
               echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
               echo "COMMENT_PATH=${{ github.event.comment.path }}" >> $GITHUB_OUTPUT
@@ -55,6 +66,8 @@ jobs:
             pull_request_review)
               echo "NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
               echo "TYPE=pr" >> $GITHUB_OUTPUT
+              NUMBER="${{ github.event.pull_request.number }}"
+              TYPE="pr"
               echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
               BODY="${{ github.event.review.body }}"
               ;;
@@ -73,9 +86,10 @@ jobs:
               CLAUDE_TYPE="issue"
             fi
           fi
+          
           echo "CLAUDE_NUMBER=$CLAUDE_NUMBER" >> $GITHUB_OUTPUT
           echo "CLAUDE_TYPE=$CLAUDE_TYPE" >> $GITHUB_OUTPUT
-
+          
           # Remove @claude mentions
           BODY=$(echo "$BODY" | sed 's/@claude//g')
 

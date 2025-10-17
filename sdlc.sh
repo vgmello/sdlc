@@ -13,56 +13,88 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GITHUB_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/github-runner"
 CLAUDE_CODE_RUNNER_DIR="$SCRIPT_DIR/.github/sdlc/claude-code-runner"
 
+# Project name from git repository (folder name)
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+
+# Default runner prefix from hostname
+DEFAULT_RUNNER_PREFIX="$(hostname)"
+
 # Function to display usage
 show_usage() {
-    echo "Usage: $0 [--setup]"
+    echo "Usage: $0 [--setup|--stop]"
     echo ""
     echo "Options:"
     echo "  --setup    Run initial setup (build containers and configure runners)"
+    echo "  --stop     Stop the GitHub Actions runners"
     echo "  (no flag)  Start the GitHub Actions runners (docker-compose up -d)"
     echo ""
     echo "Examples:"
     echo "  $0 --setup    # First-time setup"
     echo "  $0            # Start runners"
+    echo "  $0 --stop     # Stop runners"
     exit 0
 }
 
-# Function to run setup
-run_setup() {
-    echo "================================================"
-    echo "  SDLC - Claude Code Infrastructure Setup"
-    echo "================================================"
-    echo ""
-
-    # Check if Docker is installed
+# Function to check if Docker is installed
+check_docker() {
     if ! command -v docker &> /dev/null; then
         echo -e "${RED}Error: Docker is not installed.${NC}"
         echo "Please install Docker first: https://docs.docker.com/get-docker/"
         exit 1
     fi
+}
 
-    echo -e "${BLUE}✓ Docker found${NC}"
-
-    # Check if docker-compose is installed
+# Function to check if docker-compose is installed
+check_docker_compose() {
     if ! command -v docker-compose &> /dev/null; then
-        echo -e "${YELLOW}Warning: docker-compose is not installed.${NC}"
-        echo "You'll need it to run the runners. Install it from: https://docs.docker.com/compose/install/"
-        echo ""
-        read -p "Continue anyway? (y/n): " CONTINUE
-        if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    else
-        echo -e "${BLUE}✓ docker-compose found${NC}"
+        echo -e "${RED}Error: docker-compose is not installed.${NC}"
+        echo "Install it from: https://docs.docker.com/compose/install/"
+        exit 1
     fi
+}
 
-    echo ""
+# Function to check if .env file exists
+check_env_file() {
+    if [ ! -f "$GITHUB_RUNNER_DIR/.env" ]; then
+        echo -e "${RED}Error: Configuration file not found!${NC}"
+        echo ""
+        echo "Please run setup first:"
+        echo -e "  ${BLUE}./sdlc.sh --setup${NC}"
+        echo ""
+        exit 1
+    fi
+}
 
-    # Build Claude Code container
+# Function to validate environment (checks .env file and docker-compose)
+env_validation() {
+    check_env_file
+    check_docker_compose
+}
+
+# Function to build Claude Code container
+print_section_header() {
+    local title="$1"
     echo "================================================"
-    echo "  Building Claude Code Container"
+    echo "  $title"
     echo "================================================"
     echo ""
+}
+
+# Function to validate non-empty input
+validate_non_empty() {
+    local value="$1"
+    local field_name="$2"
+    
+    if [ -z "$value" ]; then
+        echo -e "${YELLOW}   Error: $field_name cannot be empty${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Function to build Claude Code container
+build_claude_container() {
+    print_section_header "Building Claude Code Container"
     echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
     docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
 
@@ -73,12 +105,27 @@ run_setup() {
         echo -e "${RED}✗ Failed to build Claude Code container${NC}"
         exit 1
     fi
+    echo ""
+}
+
+# Function to run setup
+run_setup() {
+    print_section_header "SDLC - Claude Code Infrastructure Setup"
+
+    # Check if Docker is installed
+    check_docker
+    echo -e "${BLUE}✓ Docker found${NC}"
+
+    # Check if docker-compose is installed
+    check_docker_compose
+    echo -e "${BLUE}✓ docker-compose found${NC}"
 
     echo ""
-    echo "================================================"
-    echo "  Creating Runner Configuration"
-    echo "================================================"
-    echo ""
+
+    # Build Claude Code container
+    build_claude_container
+
+    print_section_header "Creating Runner Configuration"
 
     # Create .env file in github-runner directory
     if [ ! -f "$GITHUB_RUNNER_DIR/.env" ]; then
@@ -97,10 +144,7 @@ run_setup() {
             read -s -p "   Enter your GitHub token (ghp_...): " GITHUB_TOKEN
             echo ""
 
-            if [ -z "$GITHUB_TOKEN" ]; then
-                echo -e "${YELLOW}   Error: Token cannot be empty${NC}"
-                continue
-            fi
+            validate_non_empty "$GITHUB_TOKEN" "Token" || continue
 
             if [[ ! $GITHUB_TOKEN =~ ^(ghp_|github_pat_) ]]; then
                 echo -e "${YELLOW}   Warning: Token should start with 'ghp_' or 'github_pat_'${NC}"
@@ -124,10 +168,7 @@ run_setup() {
         while true; do
             read -p "   Enter your repository or organization: " GITHUB_REPOSITORY
 
-            if [ -z "$GITHUB_REPOSITORY" ]; then
-                echo -e "${YELLOW}   Error: Repository/Organization cannot be empty${NC}"
-                continue
-            fi
+            validate_non_empty "$GITHUB_REPOSITORY" "Repository/Organization" || continue
 
             # Check if it's an org (no slash) or repo (has slash)
             if [[ $GITHUB_REPOSITORY =~ ^[^/]+/[^/]+$ ]]; then
@@ -152,9 +193,15 @@ run_setup() {
         # Prompt for Runner Prefix (optional)
         echo -e "${YELLOW}3. Runner Name Prefix (optional)${NC}"
         echo "   Runners will be named: {prefix}-gh-runner-1, {prefix}-gh-runner-2, etc."
-        echo "   Leave empty for default naming (gh-runner-1, gh-runner-2, etc.)"
+        echo "   Default prefix: $DEFAULT_RUNNER_PREFIX (hostname)"
         echo ""
-        read -p "   Enter prefix (or press Enter to skip): " RUNNER_PREFIX
+        read -p "   Enter prefix (or press Enter for default '$DEFAULT_RUNNER_PREFIX'): " RUNNER_PREFIX
+
+        # Use hostname as default if empty
+        if [ -z "$RUNNER_PREFIX" ]; then
+            RUNNER_PREFIX="$DEFAULT_RUNNER_PREFIX"
+            echo -e "${GREEN}   ✓ Using default prefix: $RUNNER_PREFIX${NC}"
+        fi
 
         echo ""
         echo -e "${BLUE}Creating .env file...${NC}"
@@ -185,17 +232,11 @@ EOF
     fi
 
     echo ""
-    echo "================================================"
-    echo "  Setup Complete!"
-    echo "================================================"
-    echo ""
+    print_section_header "Setup Complete!"
     echo -e "${GREEN}✓ Docker image 'sdlc-claude:latest' is ready${NC}"
     echo -e "${GREEN}✓ Runner configuration file created${NC}"
     echo ""
-    echo "================================================"
-    echo "  Next Steps"
-    echo "================================================"
-    echo ""
+    print_section_header "Next Steps"
     echo "1. Configure GitHub Secret (in repository settings):"
     echo "   Go to: Settings → Secrets and variables → Actions"
     echo "   - CLAUDE_CODE_OAUTH_TOKEN: Your Claude Code OAuth token"
@@ -219,49 +260,61 @@ EOF
 
 # Function to start runners
 start_runners() {
-    echo "================================================"
-    echo "  Starting GitHub Actions Runners"
-    echo "================================================"
-    echo ""
+    print_section_header "Starting GitHub Actions Runners"
 
-    # Check if .env file exists
-    if [ ! -f "$GITHUB_RUNNER_DIR/.env" ]; then
-        echo -e "${RED}Error: Configuration file not found!${NC}"
-        echo ""
-        echo "Please run setup first:"
-        echo -e "  ${BLUE}./sdlc.sh --setup${NC}"
-        echo ""
-        exit 1
-    fi
+    # Build Claude Code container first
+    build_claude_container
 
-    # Check if docker-compose is installed
-    if ! command -v docker-compose &> /dev/null; then
-        echo -e "${RED}Error: docker-compose is not installed.${NC}"
-        echo "Install it from: https://docs.docker.com/compose/install/"
-        exit 1
-    fi
+    env_validation
 
     echo -e "${BLUE}Starting runners with docker-compose...${NC}"
+    echo -e "${BLUE}Project name: $PROJECT_NAME${NC}"
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose up -d
+    docker-compose -p "$PROJECT_NAME" up --build -d
 
     if [ $? -eq 0 ]; then
         echo ""
         echo -e "${GREEN}✓ Runners started successfully!${NC}"
         echo ""
+        echo "To stop runners:"
+        echo -e "  ${BLUE}./sdlc.sh --stop${NC}"
+        echo ""
         echo "To check status:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose ps${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME ps${NC}"
         echo ""
         echo "To view logs:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose logs -f${NC}"
-        echo ""
-        echo "To stop runners:"
-        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose down${NC}"
+        echo -e "  ${BLUE}cd $GITHUB_RUNNER_DIR && docker-compose -p $PROJECT_NAME logs -f${NC}"
         echo ""
     else
         echo -e "${RED}✗ Failed to start runners${NC}"
+        exit 1
+    fi
+}
+
+# Function to stop runners
+stop_runners() {
+    print_section_header "Stopping GitHub Actions Runners"
+
+    env_validation
+
+    echo -e "${BLUE}Stopping runners with docker-compose...${NC}"
+    echo -e "${BLUE}Project name: $PROJECT_NAME${NC}"
+    echo ""
+
+    cd "$GITHUB_RUNNER_DIR"
+    docker-compose -p "$PROJECT_NAME" down
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ Runners stopped successfully!${NC}"
+        echo ""
+        echo "To start runners again:"
+        echo -e "  ${BLUE}./sdlc.sh${NC}"
+        echo ""
+    else
+        echo -e "${RED}✗ Failed to stop runners${NC}"
         exit 1
     fi
 }
@@ -270,6 +323,9 @@ start_runners() {
 case "${1:-}" in
     --setup)
         run_setup
+        ;;
+    --stop)
+        stop_runners
         ;;
     --help|-h|help)
         show_usage
