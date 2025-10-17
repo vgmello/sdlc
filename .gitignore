@@ -1,0 +1,53 @@
+# Environment and configuration files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# GitHub Actions runner work directories
+.github/sdlc/github-runner/_work/
+.github/sdlc/github-runner/.runner
+.github/sdlc/github-runner/.credentials
+.github/sdlc/github-runner/.credentials_rsaparams
+
+# Secrets and tokens
+secrets/
+*.key
+*.pem
+*.crt
+credentials.json
+token.txt
