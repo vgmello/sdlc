@@ -194,5 +194,8 @@ jobs:
             -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
             -e CLAUDE_BRANCH_NAME="claude-${{ steps.context.outputs.CLAUDE_TYPE }}-${{ steps.context.outputs.CLAUDE_NUMBER }}" \
             -e USER_PROMPT="$USER_PROMPT" \
+            -e GITHUB_ACTOR="${{ steps.context.outputs.ACTOR }}" \
+            -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
+            -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             sdlc-claude:latest
