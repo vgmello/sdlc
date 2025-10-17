@@ -160,4 +160,4 @@ jobs:
             -e AGENT_BRANCH_NAME="agent-${{ steps.context.outputs.AGENT_TYPE }}-${{ steps.context.outputs.AGENT_NUMBER }}" \
             -e USER_PROMPT="$USER_PROMPT" \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            sdlc-agent:latest
+            sdlc-claude:latest

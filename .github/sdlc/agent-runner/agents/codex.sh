@@ -8,30 +8,32 @@ echo "=== OpenAI Codex Agent ==="
 : "${CODEX_OAUTH_TOKEN:?Error: CODEX_OAUTH_TOKEN is required for Codex agent}"
 
 # OpenAI Codex installation check
-if ! command -v aider &> /dev/null; then
-    echo "Error: Aider (OpenAI Codex CLI) is not installed"
+if ! command -v codex &> /dev/null; then
+    echo "Error: OpenAI Codex CLI is not installed"
     exit 1
 fi
 
-echo "Aider CLI found: $(aider --version 2>&1 || echo 'version unknown')"
-
-# Build Aider command with OpenAI configuration
-AIDER_ARGS=(aider --yes --no-git)
+echo "OpenAI Codex CLI found: $(codex --version 2>&1 || echo 'version unknown')"
 
 # Set OpenAI API key from environment
 export OPENAI_API_KEY="$CODEX_OAUTH_TOKEN"
 
-# Add system message if provided
+# Prepare the prompt
+FULL_PROMPT="$USER_PROMPT"
+
+# Add system prompt if provided
 if [ -n "$SYSTEM_PROMPT" ]; then
-    AIDER_ARGS+=(--message "$SYSTEM_PROMPT")
+    FULL_PROMPT="$SYSTEM_PROMPT
+
+$USER_PROMPT"
 fi
 
-# Run Aider with user prompt, capture output
-echo "Running OpenAI Codex agent (via Aider)..."
+# Run OpenAI Codex with the prompt, capture output
+echo "Running OpenAI Codex agent..."
 echo ""
 
 set +e
-echo "$USER_PROMPT" | "${AIDER_ARGS[@]}" --message "$USER_PROMPT" 2>&1 | tee "$AGENT_OUTPUT_FILE"
+echo "$FULL_PROMPT" | codex 2>&1 | tee "$AGENT_OUTPUT_FILE"
 AGENT_EXIT_CODE=${PIPESTATUS[0]}
 set -e
 

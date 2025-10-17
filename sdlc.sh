@@ -95,14 +95,14 @@ validate_non_empty() {
 # Function to build Claude Code container
 build_agent_container() {
     print_section_header "Building AI Agent Container"
-    echo -e "${BLUE}Building sdlc-agent:latest...${NC}"
-    docker build -t sdlc-agent:latest "$AGENT_RUNNER_DIR"
+    echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
+    docker build -t sdlc-claude:latest "$AGENT_RUNNER_DIR"
 
     if [ $? -eq 0 ]; then
         echo ""
-        echo -e "${GREEN}✓ AI Agent container built successfully!${NC}"
+        echo -e "${GREEN}✓ Claude Code container built successfully!${NC}"
     else
-        echo -e "${RED}✗ Failed to build AI Agent container${NC}"
+        echo -e "${RED}✗ Failed to build Claude Code container${NC}"
         exit 1
     fi
     echo ""
@@ -270,7 +270,7 @@ EOF
 
     echo ""
     print_section_header "Setup Complete!"
-    echo -e "${GREEN}✓ Docker image 'sdlc-agent:latest' is ready${NC}"
+    echo -e "${GREEN}✓ Docker image 'sdlc-claude:latest' is ready${NC}"
     echo -e "${GREEN}✓ Runner configuration file created${NC}"
     echo ""
     print_section_header "Next Steps"

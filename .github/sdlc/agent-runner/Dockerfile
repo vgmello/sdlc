@@ -57,8 +57,8 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | b
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Install Aider (OpenAI Codex CLI tool)
-RUN pip3 install --user --break-system-packages aider-chat
+# Install OpenAI Codex CLI
+RUN . "$NVM_DIR/nvm.sh" && npm install -g @openai/codex@latest
 
 COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chmod=755 agents/ /usr/local/bin/agents/
