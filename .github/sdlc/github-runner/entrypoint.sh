@@ -1,6 +1,72 @@
 #!/bin/bash
 set -e
 
+# Fix Docker socket permissions if needed
+if [ -S "/var/run/docker.sock" ]; then
+    echo "Checking Docker socket permissions..."
+    
+    # Get the GID of the docker socket on the host
+    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+    
+    if [ -n "$DOCKER_SOCK_GID" ]; then
+        echo "Docker socket GID: $DOCKER_SOCK_GID"
+        
+        # Check if a group with this GID already exists
+        if ! getent group "$DOCKER_SOCK_GID" > /dev/null 2>&1; then
+            # Check if "docker" group name is already taken
+            if getent group docker > /dev/null 2>&1; then
+                # "docker" group name is taken, create a unique group name
+                UNIQUE_GROUP="dockersock"
+                # Ensure the unique group name is not already taken
+                if getent group "$UNIQUE_GROUP" > /dev/null 2>&1; then
+                    UNIQUE_GROUP="dockersock_$DOCKER_SOCK_GID"
+                fi
+                echo "Creating group $UNIQUE_GROUP with GID $DOCKER_SOCK_GID..."
+                if ! sudo groupadd -g "$DOCKER_SOCK_GID" "$UNIQUE_GROUP"; then
+                    echo "❌ Error: Failed to create group $UNIQUE_GROUP with GID $DOCKER_SOCK_GID"
+                    exit 1
+                fi
+            else
+                echo "Creating docker group with GID $DOCKER_SOCK_GID..."
+                if ! sudo groupadd -g "$DOCKER_SOCK_GID" docker; then
+                    echo "❌ Error: Failed to create group docker with GID $DOCKER_SOCK_GID"
+                    exit 1
+                fi
+            fi
+        fi
+        
+        # Add runner user to the docker group
+        DOCKER_GROUP_NAME=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1)
+        if [ -z "$DOCKER_GROUP_NAME" ]; then
+            echo "❌ Error: No group found for GID $DOCKER_SOCK_GID after attempted creation."
+            exit 1
+        fi
+        echo "Adding runner user to group: $DOCKER_GROUP_NAME"
+        if ! sudo usermod -aG "$DOCKER_GROUP_NAME" runner; then
+            echo "❌ Error: Failed to add runner user to group $DOCKER_GROUP_NAME"
+            exit 1
+        fi
+        
+        # Make Docker socket accessible to all users (for workflow execution)
+        echo "Setting Docker socket permissions for all users..."
+        if ! sudo chmod 666 /var/run/docker.sock; then
+            echo "⚠ Warning: Could not set Docker socket permissions for all users"
+        fi
+        
+        # Verify docker access
+        if sudo -u runner docker ps > /dev/null 2>&1; then
+            echo "✓ Docker access verified for runner user"
+        else
+            echo "⚠ Warning: Runner user may not have Docker access"
+            echo "This might cause issues when running workflows"
+        fi
+    else
+        echo "⚠ Warning: Could not determine Docker socket GID"
+    fi
+else
+    echo "⚠ Warning: Docker socket not found at /var/run/docker.sock"
+fi
+
 # Check required environment variables
 if [ -z "$GITHUB_TOKEN" ]; then
     echo "Error: GITHUB_TOKEN environment variable is required"
@@ -42,6 +108,14 @@ fi
 # Default to repo scope if not specified
 if [ -z "$RUNNER_SCOPE" ]; then
     RUNNER_SCOPE="repo"
+fi
+
+# Check if runner is already configured
+if [ -f ".runner" ]; then
+    echo "Runner is already configured, skipping configuration..."
+    echo "Starting existing GitHub Actions Runner..."
+    ./run.sh & wait $!
+    exit $?
 fi
 
 echo "Configuring GitHub Actions Runner..."
