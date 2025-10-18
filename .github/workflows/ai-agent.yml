@@ -10,68 +10,83 @@ on:
   pull_request_review:
     types: [submitted, edited]
 
+# Ensure only one workflow runs at a time per issue/PR
+concurrency:
+  group: ai-agent-${{ github.event_name }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
-  ai-agent:
+  # Generic preparation job that extracts context for all agents
+  prepare:
     if: |
       (github.event_name == 'issue_comment' && (contains(github.event.comment.body, '@claude') || contains(github.event.comment.body, '@codex'))) ||
       (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@claude') || contains(github.event.comment.body, '@codex'))) ||
       (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@claude') || contains(github.event.review.body, '@codex'))) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude') || contains(github.event.issue.body, '@codex') || contains(github.event.issue.title, '@codex')))
     runs-on: self-hosted
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+    outputs:
+      # Context
+      ref: ${{ steps.context.outputs.REF }}
+      agent_type: ${{ steps.context.outputs.AGENT_TYPE }}
+      agent_number: ${{ steps.context.outputs.AGENT_NUMBER }}
+      context_type: ${{ steps.context.outputs.TYPE }}
+      context_number: ${{ steps.context.outputs.NUMBER }}
+      comment_path: ${{ steps.context.outputs.COMMENT_PATH }}
+      comment_line: ${{ steps.context.outputs.COMMENT_LINE }}
+      comment_id: ${{ steps.context.outputs.COMMENT_ID }}
+      comment_diff_hunk: ${{ steps.context.outputs.COMMENT_DIFF_HUNK }}
+      user_body: ${{ steps.context.outputs.BODY }}
+      # Permissions
+      has_permission: ${{ steps.permission_check.outputs.has_permission }}
+      # Agent detection
+      has_claude: ${{ steps.detect_agents.outputs.has_claude }}
+      has_codex: ${{ steps.detect_agents.outputs.has_codex }}
+      # User prompt
+      user_prompt: ${{ steps.build_prompt.outputs.USER_PROMPT }}
 
     steps:
-      - name: Detect Agent
-        id: detect_agent
-        run: |
-          BODY=""
-          case "${{ github.event_name }}" in
-            issues) BODY="${{ github.event.issue.body }} ${{ github.event.issue.title }}" ;;
-            issue_comment) BODY="${{ github.event.comment.body }}" ;;
-            pull_request_review_comment) BODY="${{ github.event.comment.body }}" ;;
-            pull_request_review) BODY="${{ github.event.review.body }}" ;;
-          esac
-
-          if echo "$BODY" | grep -q '@codex'; then
-            AGENT_NAME="codex"; SECRET_PREFIX="CODEX"
-          elif echo "$BODY" | grep -q '@claude'; then
-            AGENT_NAME="claude"; SECRET_PREFIX="CLAUDE_CODE"
-          else
-            AGENT_NAME="claude"; SECRET_PREFIX="CLAUDE_CODE"
-          fi
-
-          echo "AGENT_NAME=$AGENT_NAME" >> $GITHUB_OUTPUT
-          echo "SECRET_PREFIX=$SECRET_PREFIX" >> $GITHUB_OUTPUT
-
       - name: Extract Context
         id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_USER_LOGIN: ${{ github.event.issue.user.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_USER_LOGIN: ${{ github.event.comment.user.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_PATH: ${{ github.event.comment.path }}
+          COMMENT_LINE: ${{ github.event.comment.line }}
+          COMMENT_DIFF_HUNK: ${{ github.event.comment.diff_hunk }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+          REVIEW_USER_LOGIN: ${{ github.event.review.user.login }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           NUMBER=""; TYPE=""; BODY=""; ACTOR=""
 
-          case "${{ github.event_name }}" in
+          case "$EVENT_NAME" in
             issues)
-              NUMBER="${{ github.event.issue.number }}"; TYPE="issue"
-              BODY="${{ github.event.issue.body }}"; ACTOR="${{ github.event.issue.user.login }}" ;;
+              NUMBER="$ISSUE_NUMBER"; TYPE="issue"
+              BODY="$ISSUE_BODY"; ACTOR="$ISSUE_USER_LOGIN" ;;
             issue_comment)
-              NUMBER="${{ github.event.issue.number }}"; TYPE="issue"
-              BODY="${{ github.event.comment.body }}"; ACTOR="${{ github.event.comment.user.login }}" ;;
+              NUMBER="$ISSUE_NUMBER"; TYPE="issue"
+              BODY="$COMMENT_BODY"; ACTOR="$COMMENT_USER_LOGIN" ;;
             pull_request_review_comment)
-              NUMBER="${{ github.event.pull_request.number }}"; TYPE="pr"
-              echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
-              echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
-              echo "COMMENT_PATH=${{ github.event.comment.path }}" >> $GITHUB_OUTPUT
-              echo "COMMENT_LINE=${{ github.event.comment.line }}" >> $GITHUB_OUTPUT
+              NUMBER="$PR_NUMBER"; TYPE="pr"
+              echo "REF=$PR_HEAD_REF" >> $GITHUB_OUTPUT
+              echo "COMMENT_ID=$COMMENT_ID" >> $GITHUB_OUTPUT
+              echo "COMMENT_PATH=$COMMENT_PATH" >> $GITHUB_OUTPUT
+              echo "COMMENT_LINE=$COMMENT_LINE" >> $GITHUB_OUTPUT
               echo "COMMENT_DIFF_HUNK<<EOF" >> $GITHUB_OUTPUT
-              echo "${{ github.event.comment.diff_hunk }}" | head -n 5 >> $GITHUB_OUTPUT
+              echo "$COMMENT_DIFF_HUNK" | head -n 5 >> $GITHUB_OUTPUT
               echo "EOF" >> $GITHUB_OUTPUT
-              BODY="${{ github.event.comment.body }}"; ACTOR="${{ github.event.comment.user.login }}" ;;
+              BODY="$COMMENT_BODY"; ACTOR="$COMMENT_USER_LOGIN" ;;
             pull_request_review)
-              NUMBER="${{ github.event.pull_request.number }}"; TYPE="pr"
-              echo "REF=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
-              BODY="${{ github.event.review.body }}"; ACTOR="${{ github.event.review.user.login }}" ;;
+              NUMBER="$PR_NUMBER"; TYPE="pr"
+              echo "REF=$PR_HEAD_REF" >> $GITHUB_OUTPUT
+              BODY="$REVIEW_BODY"; ACTOR="$REVIEW_USER_LOGIN" ;;
           esac
 
           echo "NUMBER=$NUMBER" >> $GITHUB_OUTPUT
@@ -79,8 +94,8 @@ jobs:
           echo "ACTOR=$ACTOR" >> $GITHUB_OUTPUT
 
           AGENT_NUMBER="$NUMBER"; AGENT_TYPE="$TYPE"
-          if [[ "${{ github.event_name }}" == "pull_request_review_comment" || "${{ github.event_name }}" == "pull_request_review" ]]; then
-            BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          if [[ "$EVENT_NAME" == "pull_request_review_comment" || "$EVENT_NAME" == "pull_request_review" ]]; then
+            BRANCH_NAME="$PR_HEAD_REF"
             if [[ "$BRANCH_NAME" =~ ^issue-([0-9]+)$ ]]; then
               AGENT_NUMBER="${BASH_REMATCH[1]}"; AGENT_TYPE="issue"
             fi
@@ -96,68 +111,157 @@ jobs:
 
       - name: Check User Permissions
         id: permission_check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          ACTOR: ${{ steps.context.outputs.ACTOR }}
+          REPO: ${{ github.repository }}
         run: |
-          TOKEN="${{ secrets.GH_PAT }}"; [ -z "$TOKEN" ] && TOKEN="${{ github.token }}"
-          ACTOR="${{ steps.context.outputs.ACTOR }}"; REPO="${{ github.repository }}"
-
-          PERMISSION_RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
+          PERMISSION_RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO/collaborators/$ACTOR/permission")
           PERMISSION=$(echo "$PERMISSION_RESPONSE" | jq -r '.permission // "none"')
 
           if [[ "$PERMISSION" == "write" || "$PERMISSION" == "maintain" || "$PERMISSION" == "admin" ]]; then
             echo "has_permission=true" >> $GITHUB_OUTPUT
+            echo "✅ User @$ACTOR has sufficient permissions ($PERMISSION)"
           else
             echo "has_permission=false" >> $GITHUB_OUTPUT
-            TYPE="${{ steps.context.outputs.TYPE }}"; NUMBER="${{ steps.context.outputs.NUMBER }}"
-            COMMENT_BODY="⚠️ **Permission Denied**
-
-            Hi @$ACTOR, you need write access or higher to use the AI agent workflow."
-            [ "$TYPE" == "issue" ] && gh issue comment "$NUMBER" --body "$COMMENT_BODY" || gh pr comment "$NUMBER" --body "$COMMENT_BODY"
+            echo ""
+            echo "========================================"
+            echo "❌ Permission Denied"
+            echo "========================================"
+            echo ""
+            echo "User: @$ACTOR"
+            echo "Current permission: $PERMISSION"
+            echo "Required permission: write, maintain, or admin"
+            echo ""
+            echo "Please ask a repository administrator to grant you write access."
+            echo "========================================"
+            echo ""
+            exit 1
           fi
 
-      - name: Run AI Agent
-        if: steps.permission_check.outputs.has_permission == 'true'
+      - name: Detect Agents
+        id: detect_agents
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
         run: |
-          TOKEN="${{ secrets.GH_PAT }}"; [ -z "$TOKEN" ] && TOKEN="${{ github.token }}"
-          AGENT_NAME="${{ steps.detect_agent.outputs.AGENT_NAME }}"
+          BODY=""
+          case "$EVENT_NAME" in
+            issues) BODY="$ISSUE_BODY $ISSUE_TITLE" ;;
+            issue_comment) BODY="$COMMENT_BODY" ;;
+            pull_request_review_comment) BODY="$COMMENT_BODY" ;;
+            pull_request_review) BODY="$REVIEW_BODY" ;;
+          esac
 
-          if [ "$AGENT_NAME" == "claude" ]; then
-            AGENT_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
-            AGENT_ENV_VAR="CLAUDE_CODE_OAUTH_TOKEN"
-          elif [ "$AGENT_NAME" == "codex" ]; then
-            AGENT_OAUTH_TOKEN="${{ secrets.CODEX_OAUTH_TOKEN }}"
-            AGENT_ENV_VAR="CODEX_OAUTH_TOKEN"
+          # Check for each agent mention
+          if echo "$BODY" | grep -q '@claude'; then
+            echo "has_claude=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_claude=false" >> $GITHUB_OUTPUT
           fi
 
-          [ -z "$AGENT_OAUTH_TOKEN" ] && echo "❌ OAuth token not found for $AGENT_NAME" && exit 1
+          if echo "$BODY" | grep -q '@codex'; then
+            echo "has_codex=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_codex=false" >> $GITHUB_OUTPUT
+          fi
 
-          USER_PROMPT="You are working on ${{ steps.context.outputs.TYPE }} #${{ steps.context.outputs.NUMBER }} in repository ${{ github.repository }}."
+      - name: Build User Prompt
+        id: build_prompt
+        env:
+          CONTEXT_TYPE: ${{ steps.context.outputs.TYPE }}
+          CONTEXT_NUMBER: ${{ steps.context.outputs.NUMBER }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          COMMENT_PATH: ${{ steps.context.outputs.COMMENT_PATH }}
+          COMMENT_LINE: ${{ steps.context.outputs.COMMENT_LINE }}
+          COMMENT_ID: ${{ steps.context.outputs.COMMENT_ID }}
+          COMMENT_DIFF_HUNK: ${{ steps.context.outputs.COMMENT_DIFF_HUNK }}
+          USER_BODY: ${{ steps.context.outputs.BODY }}
+        run: |
+          USER_PROMPT="You are working on $CONTEXT_TYPE #$CONTEXT_NUMBER in repository $GITHUB_REPOSITORY."
 
-          if [ -n "${{ steps.context.outputs.COMMENT_PATH }}" ]; then
+          if [ -n "$COMMENT_PATH" ]; then
             USER_PROMPT="$USER_PROMPT
 
           This is a PR review comment on:
-          - File: ${{ steps.context.outputs.COMMENT_PATH }}
-          - Line: ${{ steps.context.outputs.COMMENT_LINE }}
-          - Comment ID: ${{ steps.context.outputs.COMMENT_ID }}
+          - File: $COMMENT_PATH
+          - Line: $COMMENT_LINE
+          - Comment ID: $COMMENT_ID
           - Code context:
           \`\`\`
-          ${{ steps.context.outputs.COMMENT_DIFF_HUNK }}
+          $COMMENT_DIFF_HUNK
           \`\`\`"
           fi
 
           USER_PROMPT="$USER_PROMPT
 
-          User request: ${{ steps.context.outputs.BODY }}"
+          User request: $USER_BODY"
+
+          # Use heredoc to preserve multiline content
+          echo "USER_PROMPT<<EOF" >> $GITHUB_OUTPUT
+          echo "$USER_PROMPT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  # Claude agent job
+  claude:
+    needs: prepare
+    if: needs.prepare.outputs.has_claude == 'true'
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Run Claude Agent
+        env:
+          AGENT_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        run: |
+          [ -z "$AGENT_OAUTH_TOKEN" ] && echo "❌ OAuth token not found for Claude" && exit 1
 
           docker run --rm \
-            -e ${AGENT_ENV_VAR}="$AGENT_OAUTH_TOKEN" \
-            -e GITHUB_TOKEN="$TOKEN" \
+            -e AGENT_OAUTH_TOKEN="$AGENT_OAUTH_TOKEN" \
+            -e GITHUB_TOKEN="$GH_TOKEN" \
             -e GITHUB_REPOSITORY="${{ github.repository }}" \
-            -e GITHUB_REF="${{ steps.context.outputs.REF }}" \
-            -e AGENT_NAME="$AGENT_NAME" \
-            -e AGENT_BRANCH_NAME="agent-${{ steps.context.outputs.AGENT_TYPE }}-${{ steps.context.outputs.AGENT_NUMBER }}" \
-            -e USER_PROMPT="$USER_PROMPT" \
+            -e GITHUB_REF="${{ needs.prepare.outputs.ref }}" \
+            -e AGENT_NAME="claude" \
+            -e AGENT_BRANCH_NAME="agent-${{ needs.prepare.outputs.agent_type }}-${{ needs.prepare.outputs.agent_number }}" \
+            -e USER_PROMPT="${{ needs.prepare.outputs.user_prompt }}" \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            sdlc-claude:latest
+            sdlc:latest
+
+  # Codex agent job
+  codex:
+    needs: prepare
+    if: needs.prepare.outputs.has_codex == 'true'
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Run Codex Agent
+        env:
+          AGENT_OAUTH_TOKEN: ${{ secrets.CODEX_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        run: |
+          [ -z "$AGENT_OAUTH_TOKEN" ] && echo "❌ OAuth token not found for Codex" && exit 1
+
+          docker run --rm \
+            -e AGENT_OAUTH_TOKEN="$AGENT_OAUTH_TOKEN" \
+            -e GITHUB_TOKEN="$GH_TOKEN" \
+            -e GITHUB_REPOSITORY="${{ github.repository }}" \
+            -e GITHUB_REF="${{ needs.prepare.outputs.ref }}" \
+            -e AGENT_NAME="codex" \
+            -e AGENT_BRANCH_NAME="agent-${{ needs.prepare.outputs.agent_type }}-${{ needs.prepare.outputs.agent_number }}" \
+            -e USER_PROMPT="${{ needs.prepare.outputs.user_prompt }}" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            sdlc:latest
+

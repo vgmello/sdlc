@@ -86,24 +86,22 @@ git config --global user.email "github-actions[bot]@users.noreply.github.com"
 echo "Git credentials configured"
 echo ""
 
-# Setup agent state directory and clone/create branch (only for agents that need it)
-if [ "$AGENT_NAME" == "claude" ]; then
-    echo "=== Setting up agent state branch ==="
-    mkdir -p "$(dirname "$AGENT_STATE_DIR")"
+# Setup agent state directory and clone/create branch
+echo "=== Setting up agent state branch ==="
+mkdir -p "$(dirname "$AGENT_STATE_DIR")"
 
-    if git ls-remote --heads "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_BRANCH_NAME" 2>&1 | grep -v "x-access-token" | grep -q "$AGENT_BRANCH_NAME"; then
-        echo "Agent state branch exists, cloning: $AGENT_BRANCH_NAME"
-        git clone --depth 1 --branch "$AGENT_BRANCH_NAME" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
-    else
-        echo "Agent state branch does not exist, creating: $AGENT_BRANCH_NAME"
-        git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
-        cd "$AGENT_STATE_DIR"
-        git checkout -b "$AGENT_BRANCH_NAME"
-    fi
-
-    echo "Agent state directory: $AGENT_STATE_DIR"
-    echo ""
+if git ls-remote --heads "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_BRANCH_NAME" 2>&1 | grep -v "x-access-token" | grep -q "$AGENT_BRANCH_NAME"; then
+    echo "Agent state branch exists, cloning: $AGENT_BRANCH_NAME"
+    git clone --depth 1 --branch "$AGENT_BRANCH_NAME" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
+else
+    echo "Agent state branch does not exist, creating: $AGENT_BRANCH_NAME"
+    git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$AGENT_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
+    cd "$AGENT_STATE_DIR"
+    git checkout -b "$AGENT_BRANCH_NAME"
 fi
+
+echo "Agent state directory: $AGENT_STATE_DIR"
+echo ""
 
 # Navigate to workspace directories
 cd "$WORKSPACE_DIR"
@@ -153,17 +151,15 @@ fi
 echo "User prompt provided via USER_PROMPT environment variable"
 echo ""
 
-# Start background commit loop (only for agents that need state tracking)
-if [ "$AGENT_NAME" == "claude" ]; then
-    echo "=== Starting background state commit loop ==="
-    background_commit_loop &
-    BACKGROUND_PID=$!
-    echo "Background commit process started (PID: $BACKGROUND_PID)"
+# Start background commit loop
+echo "=== Starting background state commit loop ==="
+background_commit_loop &
+BACKGROUND_PID=$!
+echo "Background commit process started (PID: $BACKGROUND_PID)"
 
-    # Trap to ensure background process is killed on exit
-    trap "kill $BACKGROUND_PID 2>/dev/null || true" EXIT
-    echo ""
-fi
+# Trap to ensure background process is killed on exit
+trap "kill $BACKGROUND_PID 2>/dev/null || true" EXIT
+echo ""
 
 # Load and run the appropriate agent
 AGENT_SCRIPT="/usr/local/bin/agents/${AGENT_NAME}.sh"
@@ -200,11 +196,9 @@ echo "Agent exit code: $AGENT_EXIT_CODE"
 echo ""
 
 # Final commit and push agent state changes
-if [ "$AGENT_NAME" == "claude" ]; then
-    echo "=== Final commit of agent state changes ==="
-    commit_agent_state
-    echo ""
-fi
+echo "=== Final commit of agent state changes ==="
+commit_agent_state
+echo ""
 
 echo "=== AI Agent Runner Complete ==="
 exit $AGENT_EXIT_CODE
