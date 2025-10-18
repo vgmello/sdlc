@@ -5,7 +5,11 @@ set -e
 echo "=== Claude Code Agent ==="
 
 # Validate Claude-specific environment variables
-: "${CLAUDE_CODE_OAUTH_TOKEN:?Error: CLAUDE_CODE_OAUTH_TOKEN is required for Claude agent}"
+# The workflow passes AGENT_OAUTH_TOKEN which contains the actual token
+: "${AGENT_OAUTH_TOKEN:?Error: AGENT_OAUTH_TOKEN is required for Claude agent}"
+
+# Set Claude-specific token from the generic AGENT_OAUTH_TOKEN
+export CLAUDE_CODE_OAUTH_TOKEN="$AGENT_OAUTH_TOKEN"
 
 # Claude Code installation check
 if ! command -v claude &> /dev/null; then

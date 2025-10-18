@@ -5,7 +5,11 @@ set -e
 echo "=== OpenAI Codex Agent ==="
 
 # Validate Codex-specific environment variables
-: "${CODEX_OAUTH_TOKEN:?Error: CODEX_OAUTH_TOKEN is required for Codex agent}"
+# The workflow passes AGENT_OAUTH_TOKEN which contains the actual token
+: "${AGENT_OAUTH_TOKEN:?Error: AGENT_OAUTH_TOKEN is required for Codex agent}"
+
+# Set OpenAI API key from the generic AGENT_OAUTH_TOKEN
+export OPENAI_API_KEY="$AGENT_OAUTH_TOKEN"
 
 # OpenAI Codex installation check
 if ! command -v codex &> /dev/null; then
@@ -14,9 +18,6 @@ if ! command -v codex &> /dev/null; then
 fi
 
 echo "OpenAI Codex CLI found: $(codex --version 2>&1 || echo 'version unknown')"
-
-# Set OpenAI API key from environment
-export OPENAI_API_KEY="$CODEX_OAUTH_TOKEN"
 
 # Prepare the prompt
 FULL_PROMPT="$USER_PROMPT"
