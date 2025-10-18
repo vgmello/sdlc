@@ -244,44 +244,21 @@ fix_docker_permissions() {
     echo -e "${GREEN}✓ User can run Docker commands${NC}"
     echo ""
     
-    # Test Docker socket from within a container
-    echo -e "${BLUE}Testing Docker socket access from container...${NC}"
-    TEST_OUTPUT=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-        ubuntu:24.04 sh -c "ls -la /var/run/docker.sock 2>&1" 2>&1)
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Container can access Docker socket${NC}"
+    # Test Docker socket and command access from within a container using the shared function
+    echo -e "${BLUE}Testing Docker socket and command access from container...${NC}"
+    if test_docker_in_container; then
+        echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}✓ All Docker permission checks passed!${NC}"
+        echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
-        echo "Socket permissions:"
-        echo "$TEST_OUTPUT"
-        echo ""
-        
-        # Try to run docker command from container
-        echo -e "${BLUE}Testing Docker command execution from container...${NC}"
-        if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            docker:24-cli docker ps &> /dev/null; then
-            echo -e "${GREEN}✓ Container can execute Docker commands${NC}"
-            echo ""
-            echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo -e "${GREEN}✓ All Docker permission checks passed!${NC}"
-            echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo ""
-            echo "Your Docker setup is properly configured for SDLC."
-            echo "You can now run: $0 --setup"
-            return 0
-        else
-            echo -e "${YELLOW}⚠ Container can see socket but cannot execute Docker commands${NC}"
-            echo ""
-            echo "This might be a Docker-in-Docker configuration issue."
-            echo "The SDLC runners might still work, but there could be issues."
-        fi
+        echo "Your Docker setup is properly configured for SDLC."
+        echo "You can now run: $0 --setup"
+        return 0
     else
-        echo -e "${RED}✗ Container cannot access Docker socket${NC}"
+        echo -e "${YELLOW}⚠ Docker permission checks did not fully pass in container${NC}"
         echo ""
-        echo "Error output:"
-        echo "$TEST_OUTPUT"
-        echo ""
-        echo "This is unusual and might indicate a complex Docker configuration issue."
+        echo "Please review the output above for details."
+        echo "The SDLC runners might still work, but there could be issues."
     fi
     
     echo ""
