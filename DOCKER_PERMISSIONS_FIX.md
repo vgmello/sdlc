@@ -178,6 +178,8 @@ DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
 # Create/find group with matching GID
 getent group "$DOCKER_SOCK_GID" || groupadd -g "$DOCKER_SOCK_GID" docker
 
+# Get group name for the Docker socket GID (handle name/GID conflicts)
+DOCKER_GROUP_NAME=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1)
 # Add runner to group
 usermod -aG "$DOCKER_GROUP_NAME" runner
 
