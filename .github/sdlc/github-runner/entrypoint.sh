@@ -13,14 +13,39 @@ if [ -S "/var/run/docker.sock" ]; then
         
         # Check if a group with this GID already exists
         if ! getent group "$DOCKER_SOCK_GID" > /dev/null 2>&1; then
-            echo "Creating docker group with GID $DOCKER_SOCK_GID..."
-            sudo groupadd -g "$DOCKER_SOCK_GID" docker 2>/dev/null || true
+            # Check if "docker" group name is already taken
+            if getent group docker > /dev/null 2>&1; then
+                # "docker" group name is taken, create a unique group name
+                UNIQUE_GROUP="dockersock"
+                # Ensure the unique group name is not already taken
+                if getent group "$UNIQUE_GROUP" > /dev/null 2>&1; then
+                    UNIQUE_GROUP="dockersock_$DOCKER_SOCK_GID"
+                fi
+                echo "Creating group $UNIQUE_GROUP with GID $DOCKER_SOCK_GID..."
+                if ! sudo groupadd -g "$DOCKER_SOCK_GID" "$UNIQUE_GROUP"; then
+                    echo "❌ Error: Failed to create group $UNIQUE_GROUP with GID $DOCKER_SOCK_GID"
+                    exit 1
+                fi
+            else
+                echo "Creating docker group with GID $DOCKER_SOCK_GID..."
+                if ! sudo groupadd -g "$DOCKER_SOCK_GID" docker; then
+                    echo "❌ Error: Failed to create group docker with GID $DOCKER_SOCK_GID"
+                    exit 1
+                fi
+            fi
         fi
         
         # Add runner user to the docker group
         DOCKER_GROUP_NAME=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1)
+        if [ -z "$DOCKER_GROUP_NAME" ]; then
+            echo "❌ Error: No group found for GID $DOCKER_SOCK_GID after attempted creation."
+            exit 1
+        fi
         echo "Adding runner user to group: $DOCKER_GROUP_NAME"
-        sudo usermod -aG "$DOCKER_GROUP_NAME" runner 2>/dev/null || true
+        if ! sudo usermod -aG "$DOCKER_GROUP_NAME" runner; then
+            echo "❌ Error: Failed to add runner user to group $DOCKER_GROUP_NAME"
+            exit 1
+        fi
         
         # Verify docker access
         if sudo -u runner docker ps > /dev/null 2>&1; then
