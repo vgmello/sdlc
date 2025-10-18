@@ -19,19 +19,143 @@ PROJECT_NAME="$(basename "$SCRIPT_DIR")"
 # Default runner prefix from hostname
 DEFAULT_RUNNER_PREFIX="$(hostname)"
 
+# SDLC version and update info
+SDLC_VERSION="1.0.0"
+SDLC_REPO="vgmello/sdlc"
+SDLC_UPDATE_CHECK_FILE="$SCRIPT_DIR/.sdlc_last_update_check"
+
 # Function to display usage
 show_usage() {
-    echo "Usage: $0 [--stop]"
+    echo "Usage: $0 [--stop|--update|--version]"
     echo ""
     echo "Options:"
-    echo "  --stop     Stop the GitHub Actions runners"
-    echo "  (no flag)  Start the GitHub Actions runners (docker-compose up -d)"
-    echo "             If .env file doesn't exist, setup will run automatically"
+    echo "  --stop       Stop the GitHub Actions runners"
+    echo "  --update     Check for and install updates"
+    echo "  --version    Display version information"
+    echo "  (no flag)    Start the GitHub Actions runners (docker-compose up -d)"
+    echo "               If .env file doesn't exist, setup will run automatically"
     echo ""
     echo "Examples:"
     echo "  $0            # Start runners (runs setup if needed)"
     echo "  $0 --stop     # Stop runners"
+    echo "  $0 --update   # Check for updates"
+    echo "  $0 --version  # Show version"
     exit 0
+}
+
+# Function to check for updates
+check_for_updates() {
+    # Only check if curl is available
+    if ! command -v curl &> /dev/null; then
+        return 0
+    fi
+
+    local now=$(date +%s)
+    local last_check=0
+
+    # Read last check time if file exists
+    if [ -f "$SDLC_UPDATE_CHECK_FILE" ]; then
+        last_check=$(cat "$SDLC_UPDATE_CHECK_FILE" 2>/dev/null || echo "0")
+    fi
+
+    # Check once per day (86400 seconds)
+    local time_diff=$((now - last_check))
+    if [ $time_diff -lt 86400 ]; then
+        return 0
+    fi
+
+    # Update last check timestamp
+    echo "$now" > "$SDLC_UPDATE_CHECK_FILE"
+
+    # Fetch latest release tag from GitHub
+    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+
+    # If we couldn't get the version, silently return
+    if [ -z "$latest_version" ]; then
+        return 0
+    fi
+
+    # Remove 'v' prefix if present for comparison
+    latest_version=${latest_version#v}
+
+    # Compare versions (simple string comparison)
+    if [ "$latest_version" != "$SDLC_VERSION" ] && [ ! -z "$latest_version" ]; then
+        echo ""
+        echo -e "${YELLOW}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  Update Available!                             ║${NC}"
+        echo -e "${YELLOW}╟────────────────────────────────────────────────╢${NC}"
+        echo -e "${YELLOW}║  Current version: ${SDLC_VERSION}                           ║${NC}"
+        echo -e "${YELLOW}║  Latest version:  ${latest_version}                           ║${NC}"
+        echo -e "${YELLOW}╟────────────────────────────────────────────────╢${NC}"
+        echo -e "${YELLOW}║  Run './sdlc.sh --update' to update            ║${NC}"
+        echo -e "${YELLOW}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+    fi
+}
+
+# Function to perform update
+perform_update() {
+    print_section_header "SDLC Update"
+
+    echo -e "${BLUE}Checking for updates...${NC}"
+
+    if ! command -v curl &> /dev/null; then
+        echo -e "${RED}Error: curl is required for updates${NC}"
+        exit 1
+    fi
+
+    # Fetch latest release tag from GitHub
+    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+
+    if [ -z "$latest_version" ]; then
+        echo -e "${RED}Error: Could not fetch latest version${NC}"
+        exit 1
+    fi
+
+    # Remove 'v' prefix if present
+    latest_version=${latest_version#v}
+
+    echo -e "${BLUE}Current version: ${SDLC_VERSION}${NC}"
+    echo -e "${BLUE}Latest version:  ${latest_version}${NC}"
+    echo ""
+
+    if [ "$latest_version" == "$SDLC_VERSION" ]; then
+        echo -e "${GREEN}✓ You are already on the latest version!${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}A new version is available!${NC}"
+    echo ""
+    read -p "Update to version ${latest_version}? (y/n): " -n 1 -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Update cancelled.${NC}"
+        return 0
+    fi
+
+    echo ""
+    echo -e "${BLUE}Downloading and running installer...${NC}"
+    echo ""
+
+    # Download and run the install script
+    if curl -fsSL "https://raw.githubusercontent.com/${SDLC_REPO}/main/install.sh" | bash; then
+        echo ""
+        echo -e "${GREEN}✓ Update completed successfully!${NC}"
+        echo -e "${YELLOW}Note: If runners are currently running, restart them with:${NC}"
+        echo -e "${YELLOW}  ./sdlc.sh --stop${NC}"
+        echo -e "${YELLOW}  ./sdlc.sh${NC}"
+    else
+        echo ""
+        echo -e "${RED}✗ Update failed${NC}"
+        exit 1
+    fi
+}
+
+# Function to show version
+show_version() {
+    echo "SDLC version ${SDLC_VERSION}"
+    echo "Repository: https://github.com/${SDLC_REPO}"
 }
 
 # Function to check if Docker is installed
@@ -296,6 +420,9 @@ EOF
 
 # Function to start runners
 start_runners() {
+    # Check for updates (silent, once per day)
+    check_for_updates
+
     # Check if .env file exists, run setup if not
     if ! check_env_file; then
         echo -e "${YELLOW}Configuration file not found. Running setup...${NC}"
@@ -377,6 +504,12 @@ stop_runners() {
 case "${1:-}" in
     --stop)
         stop_runners
+        ;;
+    --update)
+        perform_update
+        ;;
+    --version)
+        show_version
         ;;
     --help|-h|help)
         show_usage
