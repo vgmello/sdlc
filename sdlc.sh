@@ -96,7 +96,7 @@ validate_non_empty() {
 build_claude_container() {
     print_section_header "Building Claude Code Container"
     echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
-    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
+    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR" > /dev/null 2>&1
 
     if [ $? -eq 0 ]; then
         echo ""
@@ -314,9 +314,14 @@ start_runners() {
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose -p "$PROJECT_NAME" up --build -d --scale github-runner=$RUNNER_COUNT
-
+    echo -e "${BLUE}Building and starting containers...${NC}"
+    docker-compose -p "$PROJECT_NAME" up --build -d --scale github-runner=$RUNNER_COUNT > /dev/null 2>&1
+    
     if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Containers built and started successfully!${NC}"
+        echo ""
+        echo -e "${BLUE}Active runners:${NC}"
+        docker-compose -p "$PROJECT_NAME" ps --filter "status=running" --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
         echo ""
         echo -e "${GREEN}✓ Runners started successfully!${NC}"
         echo ""
