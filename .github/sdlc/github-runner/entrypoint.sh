@@ -47,6 +47,12 @@ if [ -S "/var/run/docker.sock" ]; then
             exit 1
         fi
         
+        # Make Docker socket accessible to all users (for workflow execution)
+        echo "Setting Docker socket permissions for all users..."
+        if ! sudo chmod 666 /var/run/docker.sock; then
+            echo "⚠ Warning: Could not set Docker socket permissions for all users"
+        fi
+        
         # Verify docker access
         if sudo -u runner docker ps > /dev/null 2>&1; then
             echo "✓ Docker access verified for runner user"
@@ -102,6 +108,14 @@ fi
 # Default to repo scope if not specified
 if [ -z "$RUNNER_SCOPE" ]; then
     RUNNER_SCOPE="repo"
+fi
+
+# Check if runner is already configured
+if [ -f ".runner" ]; then
+    echo "Runner is already configured, skipping configuration..."
+    echo "Starting existing GitHub Actions Runner..."
+    ./run.sh & wait $!
+    exit $?
 fi
 
 echo "Configuring GitHub Actions Runner..."

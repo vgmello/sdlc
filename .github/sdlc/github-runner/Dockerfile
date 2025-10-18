@@ -26,7 +26,7 @@ RUN useradd -m -s /bin/bash runner && \
     && rm -rf /var/lib/apt/lists/* && \
     #
     # Allow runner user to use sudo for docker group management
-    echo "runner ALL=(ALL) NOPASSWD: /usr/sbin/groupadd, /usr/sbin/usermod, /usr/bin/docker" >> /etc/sudoers && \
+    echo "runner ALL=(ALL) NOPASSWD: /usr/sbin/groupadd, /usr/sbin/usermod, /usr/bin/docker, /bin/chmod" >> /etc/sudoers && \
     #
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings && \
