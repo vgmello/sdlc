@@ -23,12 +23,18 @@ A self-hosted GitHub Actions infrastructure that integrates Claude Code AI assis
 
 ## Quick Start
 
-### 1. Initial Setup
+### 1. Installation
 
-Run the setup script to configure your environment:
+Install SDLC in your repository with a single command:
 
 ```bash
-./sdlc.sh --setup
+curl -fsSL https://raw.githubusercontent.com/vgmello/sdlc/main/install.sh | bash
+```
+
+Or manually clone and run setup:
+
+```bash
+./sdlc.sh
 ```
 
 This will:
@@ -89,6 +95,46 @@ Claude will:
 ```bash
 ./sdlc.sh --stop
 ```
+
+### Update SDLC
+
+Check for and install updates:
+
+```bash
+./sdlc.sh --update
+```
+
+### Check Version
+
+Display current version:
+
+```bash
+./sdlc.sh --version
+```
+
+### Preserve Custom Files During Updates
+
+If you've added custom files (like extra agents or modified configurations) that should not be overwritten during updates, create a `.sdlckeep` file:
+
+```bash
+# Create .sdlckeep file
+cat > .sdlckeep << 'EOF'
+# Files to preserve during SDLC updates
+.github/sdlc/claude-system-prompt.md
+.github/sdlc/my-custom-agent.sh
+.github/workflows/my-custom-workflow.yml
+EOF
+```
+
+The `.sdlckeep` file supports:
+- Exact file paths relative to repository root
+- Glob patterns (e.g., `*.sh`, `.github/sdlc/agents/*`)
+- Comments (lines starting with `#`)
+- Empty lines (ignored)
+
+When you run the installer or updater, files listed in `.sdlckeep` will be skipped if they already exist.
+
+**Tip**: Commit `.sdlckeep` to your repository so the entire team shares the same preservation settings.
 
 ### View Runner Status
 

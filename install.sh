@@ -99,6 +99,63 @@ make_executable() {
     echo -e "${GREEN}  ✓ Made executable: $file${NC}"
 }
 
+# Function to check if file should be preserved
+should_preserve_file() {
+    local file="$1"
+    local sdlckeep_file=".sdlckeep"
+
+    # If .sdlckeep doesn't exist, don't preserve anything
+    if [ ! -f "$sdlckeep_file" ]; then
+        return 1
+    fi
+
+    # Check each pattern in .sdlckeep
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+        # Skip empty lines and comments
+        [[ -z "$pattern" || "$pattern" =~ ^[[:space:]]*# ]] && continue
+
+        # Trim whitespace
+        pattern=$(echo "$pattern" | xargs)
+
+        # Check if file matches pattern (simple glob matching)
+        if [[ "$file" == $pattern ]]; then
+            return 0
+        fi
+    done < "$sdlckeep_file"
+
+    return 1
+}
+
+# Function to download file with preservation check
+download_file_with_check() {
+    local url="$1"
+    local output="$2"
+
+    # Check if file should be preserved
+    if should_preserve_file "$output"; then
+        if [ -f "$output" ]; then
+            echo -e "${YELLOW}  ⊘ Skipped (preserved): $output${NC}"
+            return 0
+        else
+            echo -e "${BLUE}  Downloading (new file): $(basename "$output")${NC}"
+        fi
+    else
+        echo -e "${BLUE}  Downloading: $(basename "$output")${NC}"
+    fi
+
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$output")"
+
+    # Download the file
+    if curl -fsSL "$url" -o "$output"; then
+        echo -e "${GREEN}  ✓ Downloaded: $output${NC}"
+        return 0
+    else
+        echo -e "${RED}  ✗ Failed to download: $url${NC}"
+        return 1
+    fi
+}
+
 # Main installation function
 install_sdlc() {
     print_section_header "SDLC Installation"
@@ -110,6 +167,12 @@ install_sdlc() {
     check_git
     check_git_repo
     echo ""
+
+    # Check for .sdlckeep file
+    if [ -f ".sdlckeep" ]; then
+        echo -e "${BLUE}✓ Found .sdlckeep file - will preserve specified files${NC}"
+        echo ""
+    fi
 
     # Confirm installation
     echo -e "${YELLOW}This will install SDLC (Claude Code Infrastructure) in this repository.${NC}"
@@ -153,7 +216,7 @@ install_sdlc() {
 
     local failed=0
     for file in "${files[@]}"; do
-        if ! download_file "${RAW_URL}/${file}" "$file"; then
+        if ! download_file_with_check "${RAW_URL}/${file}" "$file"; then
             failed=$((failed + 1))
         fi
     done
@@ -186,6 +249,9 @@ install_sdlc() {
     echo "   - CLAUDE_CODE_OAUTH_TOKEN: Your Claude Code OAuth token"
     echo ""
     echo "3. Start using Claude by mentioning @claude in issues or pull requests!"
+    echo ""
+    echo "To preserve custom files during updates (like extra agents), create a .sdlckeep file:"
+    echo -e "   ${YELLOW}echo '.github/sdlc/my-custom-file.sh' >> .sdlckeep${NC}"
     echo ""
     echo "For more information, see:"
     echo "  - ${REPO_URL}"

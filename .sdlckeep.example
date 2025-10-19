@@ -1,0 +1,21 @@
+# .sdlckeep - Files to preserve during SDLC updates
+#
+# This file specifies which files should NOT be overwritten when running
+# the SDLC installer/updater. This is useful for preserving custom configurations,
+# extra agents, or other customizations.
+#
+# Usage:
+#   1. Copy this file to .sdlckeep:  cp .sdlckeep.example .sdlckeep
+#   2. Add file patterns (one per line) that should be preserved
+#   3. Commit .sdlckeep to share preservation settings with your team
+#
+# Pattern matching:
+#   - Use exact file paths relative to repository root
+#   - Glob patterns are supported (e.g., *.sh, .github/sdlc/agents/*)
+#   - Lines starting with # are comments
+#   - Empty lines are ignored
+#
+# Examples:
+# .github/sdlc/claude-system-prompt.md    # Preserve custom system prompt
+# .github/sdlc/my-custom-agent.sh         # Preserve custom agent
+# .github/workflows/my-workflow.yml       # Preserve custom workflow
