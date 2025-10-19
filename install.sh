@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -Eeuo pipefail
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -49,6 +49,19 @@ check_curl() {
     echo -e "${GREEN}✓ curl found${NC}"
 }
 
+# Function to check if git is installed
+check_git() {
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}Error: git is not installed.${NC}"
+        echo "Please install git first:"
+        echo "  - Ubuntu/Debian: sudo apt-get install git"
+        echo "  - CentOS/RHEL: sudo yum install git"
+        echo "  - macOS: brew install git"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ git found${NC}"
+}
+
 # Function to check if we're in a git repository
 check_git_repo() {
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -94,6 +107,7 @@ install_sdlc() {
     echo -e "${BLUE}Checking prerequisites...${NC}"
     check_os
     check_curl
+    check_git
     check_git_repo
     echo ""
 

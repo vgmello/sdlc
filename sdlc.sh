@@ -64,16 +64,16 @@ check_for_updates() {
         return 0
     fi
 
-    # Update last check timestamp
-    echo "$now" > "$SDLC_UPDATE_CHECK_FILE"
-
     # Fetch latest release tag from GitHub
-    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | sed -nE 's/.*"tag_name": *"([^"]+)".*/\1/p' | head -n1 || echo "")
 
     # If we couldn't get the version, silently return
     if [ -z "$latest_version" ]; then
         return 0
     fi
+
+    # Update last check timestamp only after successful fetch
+    echo "$now" > "$SDLC_UPDATE_CHECK_FILE"
 
     # Remove 'v' prefix if present for comparison
     latest_version=${latest_version#v}
@@ -105,7 +105,7 @@ perform_update() {
     fi
 
     # Fetch latest release tag from GitHub
-    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+    local latest_version=$(curl -s "https://api.github.com/repos/${SDLC_REPO}/releases/latest" | sed -nE 's/.*"tag_name": *"([^"]+)".*/\1/p' | head -n1 || echo "")
 
     if [ -z "$latest_version" ]; then
         echo -e "${RED}Error: Could not fetch latest version${NC}"
