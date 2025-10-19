@@ -38,6 +38,9 @@ tmp/
 temp/
 *.tmp
 
+# SDLC update check cache
+.sdlc_last_update_check
+
 # GitHub Actions runner work directories
 .github/sdlc/github-runner/_work/
 .github/sdlc/github-runner/.runner
