@@ -3,7 +3,15 @@ set -e
 
 # Fix Docker socket permissions for workflow execution
 if [ -e /var/run/docker.sock ]; then
-    sudo chmod 666 /var/run/docker.sock
+    # Ensure docker group exists
+    if ! getent group docker > /dev/null; then
+        sudo groupadd docker
+    fi
+    # Set group ownership and permissions
+    sudo chown root:docker /var/run/docker.sock
+    sudo chmod 660 /var/run/docker.sock
+    # Add runner user to docker group
+    sudo usermod -aG docker runner
 fi
 
 # Check required environment variables
