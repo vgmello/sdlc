@@ -21,6 +21,9 @@ A self-hosted GitHub Actions infrastructure that integrates Claude Code AI assis
   - For repository runners: `repo` (Full control of private repositories)
   - For organization runners: `admin:org` (Full control of orgs and teams)
 
+**⚠️ Important Note on Docker Configuration:**
+This setup requires **non-default Docker socket permissions** to enable GitHub Actions workflows to execute Docker commands. The runner containers automatically configure `chmod 666` on `/var/run/docker.sock` to allow workflow execution. This is a standard approach for containerized CI/CD environments but differs from default Docker security settings.
+
 ## Quick Start
 
 ### 1. Verify Docker Setup (Recommended)
@@ -190,6 +193,16 @@ Examples:
 ## Troubleshooting
 
 ### Docker Permission Issues
+
+**Understanding the Docker Socket Configuration:**
+
+This SDLC setup uses a **non-default Docker socket permission configuration** to enable GitHub Actions workflow steps to execute Docker commands. Here's what happens:
+
+1. **Runner Process**: The runner user is added to the docker group (standard approach)
+2. **Workflow Execution**: GitHub Actions workflow steps run in separate processes where group membership doesn't apply
+3. **Solution**: The entrypoint script automatically sets `chmod 666` on `/var/run/docker.sock` to enable workflow access
+
+**Security Note:** The socket is only exposed within the container environment, not to the host system. This is acceptable for self-hosted runners in controlled environments.
 
 If you encounter Docker permission errors:
 
