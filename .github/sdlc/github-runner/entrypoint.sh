@@ -3,15 +3,39 @@ set -e
 
 # Fix Docker socket permissions for workflow execution
 if [ -e /var/run/docker.sock ]; then
-    # Ensure docker group exists
-    if ! getent group docker > /dev/null; then
-        sudo groupadd docker
+    # Get the GID of the docker socket
+    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
+    
+    # Check if docker group exists
+    if ! getent group docker > /dev/null 2>&1; then
+        # Create docker group with the same GID as the socket
+        if ! getent group "$DOCKER_SOCK_GID" > /dev/null 2>&1; then
+            sudo groupadd -g "$DOCKER_SOCK_GID" docker 2>/dev/null || true
+        else
+            # Group with this GID exists but with different name
+            EXISTING_GROUP=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1)
+            echo "Docker socket group is $EXISTING_GROUP (GID: $DOCKER_SOCK_GID)"
+            # Use the existing group instead
+            sudo usermod -aG "$EXISTING_GROUP" runner 2>/dev/null || true
+            # Set permissions using existing group
+            sudo chown root:"$EXISTING_GROUP" /var/run/docker.sock 2>/dev/null || true
+            sudo chmod 660 /var/run/docker.sock 2>/dev/null || true
+        fi
     fi
-    # Add runner user to docker group first (for future processes)
-    sudo usermod -aG docker runner
-    # Set group ownership and permissions (takes effect immediately)
-    sudo chown root:docker /var/run/docker.sock
-    sudo chmod 660 /var/run/docker.sock
+    
+    # If docker group was created, add runner to it
+    if getent group docker > /dev/null 2>&1; then
+        sudo usermod -aG docker runner 2>/dev/null || true
+        sudo chown root:docker /var/run/docker.sock 2>/dev/null || true
+        sudo chmod 660 /var/run/docker.sock 2>/dev/null || true
+    fi
+    
+    # Verify docker access
+    if ! docker ps > /dev/null 2>&1; then
+        echo "Warning: Docker socket permissions may not be set correctly"
+    else
+        echo "Docker socket access verified"
+    fi
 fi
 
 # Check required environment variables
