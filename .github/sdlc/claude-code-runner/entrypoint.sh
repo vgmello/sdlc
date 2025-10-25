@@ -110,6 +110,45 @@ fi
 echo "Repository cloned to: $WORKSPACE_DIR"
 echo ""
 
+# Configure GLM if enabled
+if [ "${USE_GLM:-false}" = "true" ]; then
+    echo "=== Configuring GLM 4.6 Support ==="
+    if [ -z "$ZAI_API_KEY" ]; then
+        echo "ERROR: USE_GLM is true but ZAI_API_KEY is not set"
+        exit 1
+    fi
+
+    echo "Configuring Claude Code to use Z.AI's GLM models..."
+
+    # Create or update ~/.claude/settings.json with GLM configuration
+    mkdir -p /home/claude/.claude
+
+    cat > /home/claude/.claude/settings.json << 'EOF'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "ZAI_API_KEY_PLACEHOLDER",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.6",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.6"
+  }
+}
+EOF
+
+    # Replace the placeholder with the actual API key
+    sed -i "s/ZAI_API_KEY_PLACEHOLDER/$ZAI_API_KEY/g" /home/claude/.claude/settings.json
+
+    echo "GLM 4.6 configuration complete"
+    echo "  - Using Z.AI endpoint: https://api.z.ai/api/anthropic"
+    echo "  - Model mapping: Sonnet/Opus -> GLM-4.6, Haiku -> GLM-4.5-Air"
+    echo ""
+else
+    echo "=== Using Standard Claude Code (Anthropic) ==="
+    echo "GLM support is disabled. Using CLAUDE_CODE_OAUTH_TOKEN for authentication."
+    echo ""
+fi
+
 # Prepare prompts
 echo "=== Preparing prompts ==="
 

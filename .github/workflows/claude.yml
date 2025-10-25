@@ -199,5 +199,7 @@ jobs:
             -e GITHUB_ACTOR="${{ steps.context.outputs.ACTOR }}" \
             -e ISSUE_TYPE="${{ steps.context.outputs.TYPE }}" \
             -e ISSUE_NUMBER="${{ steps.context.outputs.NUMBER }}" \
+            -e USE_GLM="${USE_GLM:-false}" \
+            -e ZAI_API_KEY="${ZAI_API_KEY:-}" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             sdlc-claude:latest
