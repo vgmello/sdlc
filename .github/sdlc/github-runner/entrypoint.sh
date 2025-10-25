@@ -7,11 +7,11 @@ if [ -e /var/run/docker.sock ]; then
     if ! getent group docker > /dev/null; then
         sudo groupadd docker
     fi
-    # Set group ownership and permissions
+    # Add runner user to docker group first (for future processes)
+    sudo usermod -aG docker runner
+    # Set group ownership and permissions (takes effect immediately)
     sudo chown root:docker /var/run/docker.sock
     sudo chmod 660 /var/run/docker.sock
-    # Add runner user to docker group
-    sudo usermod -aG docker runner
 fi
 
 # Check required environment variables
