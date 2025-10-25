@@ -22,7 +22,11 @@ RUN useradd -m -s /bin/bash runner && \
     git \
     jq \
     libicu-dev \
+    sudo \
     && rm -rf /var/lib/apt/lists/* && \
+    #
+    # Allow runner to chmod docker socket
+    echo "runner ALL=(ALL) NOPASSWD: /bin/chmod" >> /etc/sudoers && \
     #
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings && \

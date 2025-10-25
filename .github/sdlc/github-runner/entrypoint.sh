@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Fix Docker socket permissions for workflow execution
+if [ -e /var/run/docker.sock ]; then
+    sudo chmod 666 /var/run/docker.sock
+fi
+
 # Check required environment variables
 if [ -z "$GITHUB_TOKEN" ]; then
     echo "Error: GITHUB_TOKEN environment variable is required"
