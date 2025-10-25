@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# Ensure workspace directory exists and has correct permissions
+WORK_DIR="/home/runner/_work"
+if [ -d "$WORK_DIR" ]; then
+    echo "Setting workspace permissions..."
+    # Ensure runner owns the workspace
+    sudo chown -R runner:runner "$WORK_DIR" 2>/dev/null || true
+    sudo chmod -R 755 "$WORK_DIR" 2>/dev/null || true
+fi
+
 # Fix Docker socket permissions for workflow execution
 if [ -e /var/run/docker.sock ]; then
     # Get the GID of the docker socket
@@ -118,6 +127,12 @@ if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
         echo "  - For repository runners: 'repo' scope with admin access"
     fi
     exit 1
+fi
+
+# Remove existing configuration if present
+if [ -f ".runner" ]; then
+    echo "Removing existing runner configuration..."
+    ./config.sh remove --token "${REGISTRATION_TOKEN}" 2>/dev/null || true
 fi
 
 # Configure the runner

@@ -1,210 +1,195 @@
 #!/bin/bash
 set -e
 
-echo "=== Claude Code Runner Entrypoint ==="
+# Source nvm to make node/npm available
+export NVM_DIR=/usr/local/nvm
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Required environment variables
-: "${GITHUB_TOKEN:?Error: GITHUB_TOKEN is required}"
-: "${GITHUB_REPOSITORY:?Error: GITHUB_REPOSITORY is required}"
-: "${CLAUDE_CODE_OAUTH_TOKEN:?Error: CLAUDE_CODE_OAUTH_TOKEN is required}"
+# Color codes for output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-# Optional environment variables with defaults
-GITHUB_REF="${GITHUB_REF:-}"  # If empty, will use default branch
-CLAUDE_BRANCH_NAME="${CLAUDE_BRANCH_NAME:?Error: CLAUDE_BRANCH_NAME is required}"
-USER_PROMPT="${USER_PROMPT:?Error: USER_PROMPT is required}"
+echo -e "${BLUE}================================================${NC}"
+echo -e "${BLUE}  Claude Code Runner - InvestBot${NC}"
+echo -e "${BLUE}================================================${NC}"
 
-# Validate CLAUDE_BRANCH_NAME is not just "claude--"
-if [[ "$CLAUDE_BRANCH_NAME" == "claude--" ]] || [[ "$CLAUDE_BRANCH_NAME" =~ ^claude--$ ]]; then
-    echo ""
-    echo "=========================================="
-    echo "ERROR: Invalid CLAUDE_BRANCH_NAME"
-    echo "=========================================="
-    echo ""
-    echo "CLAUDE_BRANCH_NAME is set to: '$CLAUDE_BRANCH_NAME'"
-    echo ""
-    echo "This indicates that the issue/PR number was not properly extracted."
-    echo "The branch name should be in format: claude-{type}-{number}"
-    echo "  Examples: claude-issue-123, claude-pr-456"
-    echo ""
-    echo "Possible causes:"
-    echo "  1. Workflow context extraction failed"
-    echo "  2. Issue/PR number is missing from the event"
-    echo "  3. Environment variable not properly passed to Docker"
-    echo ""
-    echo "=========================================="
-    echo ""
+# Validate required environment variables
+if [ -z "$GITHUB_REPOSITORY" ]; then
+    echo -e "${RED}Error: GITHUB_REPOSITORY environment variable is required${NC}"
     exit 1
 fi
 
-# Workspace directories
-WORKSPACE_DIR="/workspace"
-CLAUDE_STATE_DIR="/home/claude/.claude/projects/-workspace"
-CLAUDE_OUTPUT_FILE="/tmp/claude-output.txt"
-
-# Function to commit and push Claude state changes
-commit_claude_state() {
-    cd "$CLAUDE_STATE_DIR"
-    
-    if [[ -n $(git status -s) ]]; then
-        echo "Changes detected in Claude state"
-        git add .
-        git commit -m "Claude Code state update" 2>&1 | grep -v "x-access-token" || true
-        git push -u origin "$CLAUDE_BRANCH_NAME" 2>&1 | grep -v "x-access-token" || true
-        echo "Claude state committed and pushed to branch: $CLAUDE_BRANCH_NAME"
-    fi
-}
-
-# Background function to periodically commit Claude state
-background_commit_loop() {
-    while true; do
-        sleep 30
-        commit_claude_state
-    done
-}
-
-echo "Configuration:"
-echo "  Repository: $GITHUB_REPOSITORY"
-echo "  GitHub Ref: ${GITHUB_REF:-<default branch>}"
-echo "  Claude Branch: $CLAUDE_BRANCH_NAME"
-echo ""
-
-# Setup git credentials
-echo "=== Setting up Git credentials ==="
-git config --global credential.helper store
-echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > /home/claude/.git-credentials
-git config --global user.name "github-actions[bot]"
-git config --global user.email "github-actions[bot]@users.noreply.github.com"
-echo "Git credentials configured"
-echo ""
-
-# Setup Claude state directory and clone/create branch
-echo "=== Setting up Claude state branch ==="
-mkdir -p "$(dirname "$CLAUDE_STATE_DIR")"
-
-if git ls-remote --heads "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$CLAUDE_BRANCH_NAME" 2>&1 | grep -v "x-access-token" | grep -q "$CLAUDE_BRANCH_NAME"; then
-    echo "Claude branch exists, cloning: $CLAUDE_BRANCH_NAME"
-    git clone --depth 1 --branch "$CLAUDE_BRANCH_NAME" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$CLAUDE_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
-else
-    echo "Claude branch does not exist, creating: $CLAUDE_BRANCH_NAME"
-    git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$CLAUDE_STATE_DIR" 2>&1 | grep -v "x-access-token" || true
-    cd "$CLAUDE_STATE_DIR"
-    git checkout -b "$CLAUDE_BRANCH_NAME"
+if [ -z "$CLAUDE_BRANCH_NAME" ]; then
+    echo -e "${RED}Error: CLAUDE_BRANCH_NAME environment variable is required${NC}"
+    exit 1
 fi
 
-echo "Claude state directory: $CLAUDE_STATE_DIR"
-echo ""
+if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+    echo -e "${RED}Error: CLAUDE_CODE_OAUTH_TOKEN secret is required${NC}"
+    exit 1
+fi
 
-# Navigate to workspace directories
+# Configure git
+git config --global user.name "Claude Code"
+git config --global user.email "claude-code@anthropic.com"
+git config --global init.defaultBranch main
+
+# Configure GitHub CLI with token
+export GITHUB_TOKEN="${GH_TOKEN}"
+
+# Configure git to use the token for authentication
+if [ -n "$GH_TOKEN" ]; then
+    git config --global url."https://oauth2:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+fi
+
+# We should already be in the correct directory (set by docker run -w)
+# Verify we're in a git repository
+if [ ! -d ".git" ]; then
+    echo -e "${RED}Error: Not in a git repository. Current directory: $(pwd)${NC}"
+    echo -e "${RED}Directory contents:${NC}"
+    ls -la
+    exit 1
+fi
+
+# Save the workspace directory for later use
+WORKSPACE_DIR=$(pwd)
+
+echo -e "${GREEN}✓ Repository: ${GITHUB_REPOSITORY}${NC}"
+echo -e "${GREEN}✓ Branch: ${CLAUDE_BRANCH_NAME}${NC}"
+echo -e "${GREEN}✓ Issue/PR #${ISSUE_NUMBER} (${ISSUE_TYPE})${NC}"
+echo -e "${GREEN}✓ Working directory: $(pwd)${NC}"
+
+# Fetch all branches
+echo -e "${BLUE}Fetching latest changes...${NC}"
+git fetch --all --prune
+
+# Check if feature branch exists, create if needed
+if git ls-remote --heads origin "$CLAUDE_BRANCH_NAME" | grep -q "$CLAUDE_BRANCH_NAME"; then
+    echo -e "${GREEN}✓ Feature branch exists, checking out...${NC}"
+    git checkout "$CLAUDE_BRANCH_NAME"
+    git pull origin "$CLAUDE_BRANCH_NAME"
+else
+    echo -e "${YELLOW}⚠ Feature branch doesn't exist, creating from main...${NC}"
+    git checkout -b "$CLAUDE_BRANCH_NAME" origin/main
+    git push -u origin "$CLAUDE_BRANCH_NAME"
+fi
+
+# Set up Claude state directory (use /tmp since we're running as arbitrary UID)
+CLAUDE_STATE_DIR="/tmp/.claude/projects/-workspace"
+mkdir -p "$CLAUDE_STATE_DIR"
+
+# Initialize state directory as git repo if needed
+if [ ! -d "$CLAUDE_STATE_DIR/.git" ]; then
+    echo -e "${BLUE}Initializing Claude state directory...${NC}"
+    cd "$CLAUDE_STATE_DIR"
+    git init
+    git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+    # Return to workspace
+    cd - > /dev/null
+fi
+
+# Check if state branch exists
+STATE_BRANCH="${CLAUDE_BRANCH_NAME}"
+cd "$CLAUDE_STATE_DIR"
+
+if git ls-remote --heads origin "$STATE_BRANCH" | grep -q "$STATE_BRANCH"; then
+    echo -e "${GREEN}✓ State branch exists, fetching...${NC}"
+    git fetch origin "$STATE_BRANCH"
+    git checkout -B "$STATE_BRANCH" "origin/$STATE_BRANCH" 2>/dev/null || git checkout -b "$STATE_BRANCH"
+else
+    echo -e "${YELLOW}⚠ State branch doesn't exist, creating...${NC}"
+    git checkout -b "$STATE_BRANCH"
+fi
+
 cd "$WORKSPACE_DIR"
 
-# Clone main repository
-echo "=== Cloning main repository ==="
-if [ -n "$GITHUB_REF" ]; then
-    echo "Cloning with specific ref: $GITHUB_REF"
-    git clone --depth 1 --branch "$GITHUB_REF" "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORKSPACE_DIR" 2>&1 | grep -v "x-access-token" || true
-else
-    echo "Cloning default branch"
-    git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORKSPACE_DIR" 2>&1 | grep -v "x-access-token" || true
-fi
+# Background loop to commit and push state changes every 30 seconds
+(
+    while true; do
+        sleep 30
+        cd "$CLAUDE_STATE_DIR"
+        if [ -n "$(git status --porcelain)" ]; then
+            echo -e "${BLUE}Saving Claude state...${NC}"
+            git add -A
+            git commit -m "Auto-save Claude state at $(date -u +"%Y-%m-%d %H:%M:%S UTC")" || true
+            git push -f origin "$STATE_BRANCH" || true
+        fi
+        cd "$WORKSPACE_DIR"
+    done
+) &
 
-echo "Repository cloned to: $WORKSPACE_DIR"
-echo ""
+# Store background process PID
+STATE_COMMIT_PID=$!
 
-# Prepare prompts
-echo "=== Preparing prompts ==="
+# Cleanup function
+cleanup() {
+    echo -e "${BLUE}Performing final state save...${NC}"
+    cd "$CLAUDE_STATE_DIR"
+    if [ -n "$(git status --porcelain)" ]; then
+        git add -A
+        git commit -m "Final state save at $(date -u +"%Y-%m-%d %H:%M:%S UTC")" || true
+        git push -f origin "$STATE_BRANCH" || true
+    fi
+    
+    # Kill background commit process
+    kill $STATE_COMMIT_PID 2>/dev/null || true
+    
+    echo -e "${GREEN}✓ Cleanup complete${NC}"
+}
 
-# System prompt - read from repo
-SYSTEM_PROMPT_FILE="$WORKSPACE_DIR/.github/sdlc/claude-system-prompt.md"
+trap cleanup EXIT
 
+# Build Claude prompt with system prompt and user request
+SYSTEM_PROMPT_FILE="/workspace/.github/sdlc/claude-system-prompt.md"
 if [ -f "$SYSTEM_PROMPT_FILE" ]; then
-    echo "System prompt found at: $SYSTEM_PROMPT_FILE"
     SYSTEM_PROMPT=$(cat "$SYSTEM_PROMPT_FILE")
 else
-    echo ""
-    echo "=========================================="
-    echo "WARNING: No system prompt file found!"
-    echo "=========================================="
-    echo ""
-    echo "Expected location: $SYSTEM_PROMPT_FILE"
-    echo ""
-    echo "Using default system prompt instead."
-    echo "For better results, create a system prompt file with:"
-    echo "  - Project context and guidelines"
-    echo "  - Coding standards and conventions"
-    echo "  - Repository structure information"
-    echo ""
-    echo "=========================================="
-    echo ""
-    SYSTEM_PROMPT="You are Claude Code, an AI assistant helping with software development tasks."
+    echo -e "${YELLOW}⚠ System prompt file not found, using default${NC}"
+    SYSTEM_PROMPT="You are an expert software engineer working on the InvestBot project via GitHub Actions."
 fi
 
-# User prompt - passed via environment variable
-echo "User prompt provided via USER_PROMPT environment variable"
-echo ""
+# Construct full prompt
+FULL_PROMPT="${SYSTEM_PROMPT}
 
-# Start background commit loop
-echo "=== Starting background state commit loop ==="
-background_commit_loop &
-BACKGROUND_PID=$!
-echo "Background commit process started (PID: $BACKGROUND_PID)"
+---
 
-# Trap to ensure background process is killed on exit
-trap "kill $BACKGROUND_PID 2>/dev/null || true" EXIT
-echo ""
+## User Request
 
-# Run Claude Code
-echo "=== Running Claude Code ==="
-echo "Working directory: $(pwd)"
-echo ""
+${USER_PROMPT}
 
-# Build claude command
-CLAUDE_ARGS=(claude --continue --print --dangerously-skip-permissions)
+---
 
-# Add system prompt
-if [ -n "$SYSTEM_PROMPT" ]; then
-    CLAUDE_ARGS+=(--system-prompt "$SYSTEM_PROMPT")
+## Context
+
+- **Repository**: ${GITHUB_REPOSITORY}
+- **Branch**: ${CLAUDE_BRANCH_NAME}
+- **Issue Type**: ${ISSUE_TYPE}
+- **Issue/PR Number**: ${ISSUE_NUMBER}"
+
+# Add PR review comment context if available
+if [ -n "$FILE_PATH" ]; then
+    FULL_PROMPT="${FULL_PROMPT}
+- **File**: ${FILE_PATH}
+- **Line**: ${LINE_NUMBER}
+- **Comment ID**: ${COMMENT_ID}
+
+### Diff Context
+\`\`\`diff
+${DIFF_HUNK}
+\`\`\`"
 fi
 
-# Run Claude with user prompt via stdin, capture output
-set +e
-echo "$USER_PROMPT" | "${CLAUDE_ARGS[@]}" 2>&1 | tee "$CLAUDE_OUTPUT_FILE"
-CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
-set -e
+# Run Claude Code with the prompt
+echo -e "${BLUE}================================================${NC}"
+echo -e "${BLUE}  Starting Claude Code Session${NC}"
+echo -e "${BLUE}================================================${NC}"
 
-echo ""
-echo "Claude Code exit code: $CLAUDE_EXIT_CODE"
-echo ""
+# Run Claude Code with flags to continue conversation, print output, and skip permissions
+echo "$FULL_PROMPT" | claude --continue --print --dangerously-skip-permissions
 
-# Post response as GitHub comment
-echo "=== Posting response to GitHub ==="
-
-if [ ! -s "$CLAUDE_OUTPUT_FILE" ]; then
-    echo "Error: Claude Code did not produce output" > "$CLAUDE_OUTPUT_FILE"
-fi
-
-COMMENT_BODY=$(jq -n \
-    --arg output "$(cat "$CLAUDE_OUTPUT_FILE")" \
-    --arg actor "$GITHUB_ACTOR" \
-    --arg type "$ISSUE_TYPE" \
-    --arg number "$ISSUE_NUMBER" \
-    '{
-        body: ("## Claude Code Response\n\n" + $output + "\n\n---\n*Triggered by @" + $actor + " on " + $type + " #" + $number + "*")
-    }')
-
-curl -sS -X POST \
-    -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" \
-    -d "$COMMENT_BODY"
-
-echo "Comment posted successfully"
-echo ""
-
-# Final commit and push Claude state changes
-echo "=== Final commit of Claude state changes ==="
-commit_claude_state
-echo ""
-
-echo "=== Claude Code Runner Complete ==="
-exit $CLAUDE_EXIT_CODE
+echo -e "${GREEN}================================================${NC}"
+echo -e "${GREEN}  Claude Code Session Complete${NC}"
+echo -e "${GREEN}================================================${NC}"

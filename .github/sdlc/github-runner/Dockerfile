@@ -25,11 +25,13 @@ RUN useradd -m -s /bin/bash runner && \
     sudo \
     && rm -rf /var/lib/apt/lists/* && \
     #
-    # Allow runner to manage docker socket permissions (secure sudoers configuration)
+    # Allow runner to manage docker socket and workspace permissions (secure sudoers configuration)
     echo 'runner ALL=(ALL) NOPASSWD: /bin/chmod /var/run/docker.sock, /usr/bin/chmod /var/run/docker.sock' > /etc/sudoers.d/runner-docker && \
     echo 'runner ALL=(ALL) NOPASSWD: /bin/chown /var/run/docker.sock, /usr/bin/chown /var/run/docker.sock' >> /etc/sudoers.d/runner-docker && \
     echo 'runner ALL=(ALL) NOPASSWD: /usr/sbin/groupadd docker' >> /etc/sudoers.d/runner-docker && \
     echo 'runner ALL=(ALL) NOPASSWD: /usr/sbin/usermod -aG docker runner' >> /etc/sudoers.d/runner-docker && \
+    echo 'runner ALL=(ALL) NOPASSWD: /bin/chown -R runner\:runner /home/runner/_work, /usr/bin/chown -R runner\:runner /home/runner/_work' >> /etc/sudoers.d/runner-docker && \
+    echo 'runner ALL=(ALL) NOPASSWD: /bin/chmod -R * /home/runner/_work, /usr/bin/chmod -R * /home/runner/_work' >> /etc/sudoers.d/runner-docker && \
     chmod 0440 /etc/sudoers.d/runner-docker && \
     #
     # Add Docker's official GPG key
