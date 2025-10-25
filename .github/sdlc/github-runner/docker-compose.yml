@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   github-runner:
     image: ${PROJECT_NAME:-investbot}-github-runner
@@ -14,7 +12,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-workspace:/home/runner/_work
-    privileged: true
 
 volumes:
   runner-workspace:
