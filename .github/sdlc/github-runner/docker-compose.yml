@@ -11,6 +11,8 @@ services:
       - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
       - RUNNER_SCOPE=${RUNNER_SCOPE:-repo}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-}
+      - USE_GLM=${USE_GLM:-false}
+      - ZAI_API_KEY=${ZAI_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:

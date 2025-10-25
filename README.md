@@ -10,13 +10,16 @@ A self-hosted GitHub Actions infrastructure that integrates Claude Code AI assis
 - **Scalable**: Configure multiple parallel runners for concurrent tasks
 - **Secure**: Uses GitHub Personal Access Tokens with proper scopes
 - **Flexible**: Works with both repository-level and organization-level runners
+- **GLM 4.6 Support (Experimental)**: Option to use Z.AI's GLM models as a drop-in replacement
 
 ## Prerequisites
 
 - Docker (v20.10 or later)
 - docker-compose (v1.29 or later)
 - GitHub repository with admin access
-- Claude Code OAuth token
+- **Either:**
+  - Claude Code OAuth token (for standard Anthropic Claude), OR
+  - Z.AI API key (for experimental GLM 4.6 support)
 - GitHub Personal Access Token with appropriate scopes:
   - For repository runners: `repo` (Full control of private repositories)
   - For organization runners: `admin:org` (Full control of orgs and teams)
@@ -143,7 +146,58 @@ RUNNER_PREFIX=my-hostname
 
 # Number of parallel runners
 RUNNER_REPLICATIONS=5
+
+# GLM 4.6 Support (Experimental)
+USE_GLM=false
+ZAI_API_KEY=
 ```
+
+## GLM 4.6 Support (Experimental)
+
+SDLC now supports using Z.AI's GLM 4.6 models as an experimental alternative to Anthropic's Claude models. This feature allows you to:
+
+- Use GLM-4.6 for high-quality code generation (replaces both Sonnet and Opus; both are mapped to the same GLM-4.6 model variant)
+- Use GLM-4.5-Air for faster responses (replaces Haiku)
+- Connect to Z.AI's API endpoint as a drop-in replacement
+
+### Setting Up GLM 4.6
+
+1. **Get a Z.AI API Key**:
+   - Visit [Z.AI Open Platform](https://z.ai/model-api)
+   - Register or login to your account
+   - Create an API key in the [API Keys management page](https://z.ai/manage-apikey/apikey-list)
+   - Copy your API key for use in setup
+
+2. **Configure During Setup**:
+   When running `./sdlc.sh --setup`, answer "yes" when prompted about GLM 4.6 support and provide your Z.AI API key.
+
+3. **Manual Configuration**:
+   Alternatively, edit `.github/sdlc/github-runner/.env` and set:
+   ```env
+   USE_GLM=true
+   ZAI_API_KEY=your_zai_api_key_here
+   ```
+
+4. **GitHub Secrets**:
+   - When using GLM, you still need to set `CLAUDE_CODE_OAUTH_TOKEN` in GitHub Secrets
+   - The system will use the Z.AI API key for model access instead
+
+### Model Mapping
+
+When GLM support is enabled, Claude Code's model selection maps to:
+
+| Claude Code Model | GLM Model      | Use Case               |
+|-------------------|----------------|------------------------|
+| Opus              | GLM-4.6        | Complex tasks          |
+| Sonnet            | GLM-4.6        | Balanced performance   |
+| Haiku             | GLM-4.5-Air    | Fast responses         |
+
+### Important Notes
+
+- This is an **experimental feature** - behavior may differ from standard Claude
+- API timeout is set to 3000 seconds (50 minutes) for long-running tasks
+- The Z.AI endpoint (`https://api.z.ai/api/anthropic`) provides Anthropic-compatible API
+- You can switch back to standard Claude by setting `USE_GLM=false` in the `.env` file
 
 ## Project Structure
 
