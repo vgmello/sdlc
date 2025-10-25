@@ -22,7 +22,22 @@ A self-hosted GitHub Actions infrastructure that integrates Claude Code AI assis
   - For organization runners: `admin:org` (Full control of orgs and teams)
 
 **⚠️ Important Note on Docker Configuration:**
+
 This setup requires **non-default Docker socket permissions** to enable GitHub Actions workflows to execute Docker commands. The runner containers automatically configure `chmod 666` on `/var/run/docker.sock` to allow workflow execution. This is a standard approach for containerized CI/CD environments but differs from default Docker security settings.
+
+**Why This May Be Needed:**
+- **Docker Desktop (macOS/Windows)**: Docker socket GID varies by installation and OS version
+- **Linux Distributions**: Different distros assign different GIDs to the docker group (e.g., 999, 998, 127)
+- **Docker Alternatives**: Colima, Rancher Desktop, Podman use different permission models
+- **GitHub Actions Context**: Workflow steps execute in separate process contexts where group membership doesn't propagate
+
+**Our Approach:**
+Instead of requiring manual configuration for each environment, the runner automatically:
+1. Detects the host's Docker socket GID
+2. Creates matching group inside container
+3. Sets socket to world-readable/writable (666) for workflow compatibility
+
+See [DOCKER_PERMISSIONS_FIX.md](DOCKER_PERMISSIONS_FIX.md) for complete technical details.
 
 ## Quick Start
 
@@ -34,11 +49,18 @@ Before setting up, verify your Docker installation and permissions:
 ./sdlc.sh --fix-permissions
 ```
 
-This will:
+This diagnostic tool will:
 - Check if Docker is installed and running
 - Verify your user has permission to run Docker commands
 - Test Docker socket access from containers
+- Detect your Docker socket GID and configuration
 - Provide platform-specific guidance if issues are found
+
+**Note:** This is especially important if you're using:
+- macOS with Docker Desktop (any version)
+- Linux with non-standard Docker installation
+- Docker alternatives (Colima, Rancher Desktop, Podman)
+- Any system where you've encountered "permission denied" errors with Docker
 
 ### 2. Initial Setup
 
@@ -196,13 +218,58 @@ Examples:
 
 **Understanding the Docker Socket Configuration:**
 
-This SDLC setup uses a **non-default Docker socket permission configuration** to enable GitHub Actions workflow steps to execute Docker commands. Here's what happens:
+This SDLC setup uses a **non-default Docker socket permission configuration** to enable GitHub Actions workflow steps to execute Docker commands.
 
-1. **Runner Process**: The runner user is added to the docker group (standard approach)
-2. **Workflow Execution**: GitHub Actions workflow steps run in separate processes where group membership doesn't apply
-3. **Solution**: The entrypoint script automatically sets `chmod 666` on `/var/run/docker.sock` to enable workflow access
+#### Why This Problem Occurs
 
-**Security Note:** The socket is only exposed within the container environment, not to the host system. This is acceptable for self-hosted runners in controlled environments.
+Docker permission issues manifest differently across environments due to:
+
+**1. Variable Docker Socket GIDs Across Systems:**
+- **macOS (Docker Desktop)**: GID varies by Docker Desktop version and installation method
+- **Linux**: Each distribution assigns different GIDs to the docker group
+  - Ubuntu/Debian: Often GID 999
+  - Fedora/RHEL: Often GID 998
+  - Arch: Often GID 127
+- **Docker Alternatives**: Colima, Rancher Desktop, Podman each have unique permission models
+
+**2. Container UID/GID Mismatch:**
+- Host's Docker socket has a specific GID (e.g., 999 on host)
+- Container creates a `runner` user with a different UID/GID
+- Simply mounting the socket doesn't grant access due to GID mismatch
+
+**3. GitHub Actions Workflow Execution Model:**
+- Runner process itself can be added to docker group (standard approach works here)
+- Workflow steps run in **separate process contexts**
+- Group membership from runner process **does not propagate** to workflow steps
+- Result: `docker` commands in workflow steps fail with "permission denied"
+
+#### Why Some Machines Work and Others Don't
+
+✅ **Works by default if:**
+- Docker socket happens to be world-readable on the host (rare)
+- User is running workflows as root (not recommended)
+- GID coincidentally matches between host and container
+
+❌ **Fails on most systems:**
+- Standard Docker installations with proper security (most common)
+- When GIDs don't align between host and container
+- When workflow steps need Docker access (the typical use case)
+
+#### Our Three-Tier Solution
+
+1. **Runner Process**: The runner user is added to a docker group with matching GID (standard approach)
+2. **Group Creation**: Container dynamically creates/joins group with host's Docker socket GID
+3. **Workflow Access**: Entrypoint sets `chmod 666` on socket to enable workflow step execution
+
+**Why `chmod 666` is necessary:**
+- Group membership works for the runner process
+- Group membership does NOT work for workflow steps (different process context)
+- Socket must be world-accessible within container for workflows to use Docker
+- Socket is only exposed within container, not to host system
+
+**Security Note:** The socket is only exposed within the container environment, not to the host system. This is acceptable and standard for self-hosted runners in controlled environments. The container itself provides isolation.
+
+#### Diagnostic and Fix Tool
 
 If you encounter Docker permission errors:
 
@@ -255,6 +322,73 @@ This diagnostic tool will:
    ```bash
    ./sdlc.sh --setup
    ```
+
+## Technical Details: Docker Socket Permissions
+
+### The Complete Permission Solution
+
+This implementation provides a comprehensive solution to Docker socket access that works across different environments:
+
+#### Problem Statement
+
+Standard approaches fail because:
+1. **Group membership approach**: Works for runner process but NOT for GitHub Actions workflow steps
+2. **Process isolation**: Workflow steps execute in separate contexts where group membership doesn't propagate
+3. **GID variability**: Docker socket GIDs differ across systems (macOS: variable, Ubuntu: 999, Fedora: 998, etc.)
+
+#### Implementation Details
+
+**At Container Startup** (`entrypoint.sh`):
+
+```bash
+# 1. Detect Docker socket GID from host
+DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
+
+# 2. Create or find group with matching GID
+# Handles conflicts if "docker" name is already taken
+getent group "$DOCKER_SOCK_GID" || groupadd -g "$DOCKER_SOCK_GID" docker
+
+# 3. Add runner user to the group
+usermod -aG docker runner
+
+# 4. Set socket permissions for workflow access
+chmod 666 /var/run/docker.sock
+```
+
+**Why Each Step is Necessary:**
+
+| Step | Purpose | What It Solves |
+|------|---------|----------------|
+| GID Detection | Match host's docker socket GID | Works with any Docker installation |
+| Group Creation | Establish proper group ownership | Runner process gets docker access |
+| User Addition | Add runner to docker group | Standard permission model |
+| chmod 666 | Enable workflow step access | **Critical for GitHub Actions workflows** |
+
+#### Alternative Approaches Considered
+
+❌ **Group membership only**: Fails for workflow steps (different process context)
+❌ **DinD (Docker-in-Docker)**: Complex, security concerns, resource overhead
+❌ **Hardcoded GIDs**: Breaks on different systems
+✅ **Dynamic GID + chmod 666**: Works universally, acceptable security model for self-hosted
+
+#### Security Model
+
+**Container Isolation Provides Security:**
+- Socket with 666 permissions is only accessible **within the container**
+- Host system's socket remains protected by host permissions
+- Container provides the security boundary
+- Acceptable for self-hosted runners in controlled environments
+
+**Not Recommended For:**
+- Public, untrusted runner environments
+- Multi-tenant systems with untrusted code
+
+**Recommended For:**
+- Self-hosted runners in controlled infrastructure
+- Private repositories with trusted developers
+- CI/CD pipelines in secured networks
+
+For complete technical documentation, see [DOCKER_PERMISSIONS_FIX.md](DOCKER_PERMISSIONS_FIX.md).
 
 ## Security Considerations
 
