@@ -156,8 +156,8 @@ ZAI_API_KEY=
 
 SDLC now supports using Z.AI's GLM 4.6 models as an experimental alternative to Anthropic's Claude models. This feature allows you to:
 
-- Use GLM-4.6 for high-quality code generation (maps to Sonnet and Opus)
-- Use GLM-4.5-Air for faster responses (maps to Haiku)
+- Use GLM-4.6 for high-quality code generation (replaces both Sonnet and Opus; both are mapped to the same GLM-4.6 model variant)
+- Use GLM-4.5-Air for faster responses (replaces Haiku)
 - Connect to Z.AI's API endpoint as a drop-in replacement
 
 ### Setting Up GLM 4.6

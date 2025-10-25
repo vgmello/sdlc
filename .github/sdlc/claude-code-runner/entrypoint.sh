@@ -120,24 +120,35 @@ if [ "${USE_GLM:-false}" = "true" ]; then
 
     echo "Configuring Claude Code to use Z.AI's GLM models..."
 
-    # Create or update ~/.claude/settings.json with GLM configuration
+    # Create or update ~/.claude/settings.json with GLM configuration using jq for safe JSON generation
     mkdir -p /home/claude/.claude
 
-    cat > /home/claude/.claude/settings.json << 'EOF'
-{
-  "env": {
-    "ANTHROPIC_AUTH_TOKEN": "ZAI_API_KEY_PLACEHOLDER",
-    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
-    "API_TIMEOUT_MS": "3000000",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.6",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.6"
-  }
-}
-EOF
+    # Use jq to safely generate the JSON with the API key
+    # API_TIMEOUT_MS is set to 3000000 (50 minutes) for long-running coding tasks
+    jq -n \
+        --arg api_key "$ZAI_API_KEY" \
+        '{
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": $api_key,
+                "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+                "API_TIMEOUT_MS": "3000000",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.6",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.6"
+            }
+        }' > /home/claude/.claude/settings.json
 
-    # Replace the placeholder with the actual API key
-    sed -i "s/ZAI_API_KEY_PLACEHOLDER/$ZAI_API_KEY/g" /home/claude/.claude/settings.json
+    # Validate that the settings file was created successfully
+    if [ ! -s /home/claude/.claude/settings.json ]; then
+        echo "ERROR: Failed to create Claude settings file"
+        exit 1
+    fi
+
+    # Verify the API key was properly set (without exposing it)
+    if ! jq -e '.env.ANTHROPIC_AUTH_TOKEN' /home/claude/.claude/settings.json > /dev/null; then
+        echo "ERROR: API key was not properly set in settings file"
+        exit 1
+    fi
 
     echo "GLM 4.6 configuration complete"
     echo "  - Using Z.AI endpoint: https://api.z.ai/api/anthropic"
