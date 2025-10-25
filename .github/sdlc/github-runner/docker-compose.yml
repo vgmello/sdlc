@@ -1,17 +1,17 @@
 services:
   github-runner:
+    image: ${PROJECT_NAME:-investbot}-github-runner
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        RUNNER_VERSION: "2.329.0"
+    env_file:
+      - .env
     restart: unless-stopped
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
-      - RUNNER_SCOPE=${RUNNER_SCOPE:-repo}
-      - RUNNER_PREFIX=${RUNNER_PREFIX:-}
+    deploy:
+      replicas: ${RUNNER_REPLICATIONS:-5}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    deploy:
-      replicas: 5
+      - runner-workspace:/home/runner/_work
+
+volumes:
+  runner-workspace:
