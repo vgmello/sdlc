@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Extract Context
         id: context
+        env:
+          DIFF_HUNK: ${{ github.event.comment.diff_hunk }}
         run: |
           # Initialize variables
           NUMBER=""
@@ -66,7 +68,7 @@ jobs:
               echo "COMMENT_LINE=${{ github.event.comment.line }}" >> $GITHUB_OUTPUT
               {
                 echo "COMMENT_DIFF_HUNK<<EOF"
-                echo "${{ github.event.comment.diff_hunk }}" | head -n 5
+                printf '%s\n' "$DIFF_HUNK" | head -n 5
                 echo "EOF"
               } >> $GITHUB_OUTPUT
               BODY="${{ github.event.comment.body }}"

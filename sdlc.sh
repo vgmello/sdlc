@@ -28,10 +28,11 @@ show_usage() {
     echo "  --stop              Stop the GitHub Actions runners"
     echo "  --fix-permissions   Diagnose and fix Docker permission issues"
     echo "  (no flag)           Start the GitHub Actions runners (docker-compose up -d)"
+    echo "                      If .env file doesn't exist, setup will run automatically"
     echo ""
     echo "Examples:"
     echo "  $0 --setup             # First-time setup"
-    echo "  $0                     # Start runners"
+    echo "  $0                     # Start runners (runs setup if needed)"
     echo "  $0 --stop              # Stop runners"
     echo "  $0 --fix-permissions   # Fix Docker permissions"
     exit 0
@@ -268,18 +269,18 @@ fix_docker_permissions() {
 # Function to check if .env file exists
 check_env_file() {
     if [ ! -f "$GITHUB_RUNNER_DIR/.env" ]; then
-        echo -e "${RED}Error: Configuration file not found!${NC}"
-        echo ""
-        echo "Please run setup first:"
-        echo -e "  ${BLUE}./sdlc.sh --setup${NC}"
-        echo ""
-        exit 1
+        return 1
     fi
+    return 0
 }
 
 # Function to validate environment (checks .env file and docker-compose)
 env_validation() {
-    check_env_file
+    if ! check_env_file; then
+        echo -e "${RED}Error: Configuration file not found!${NC}"
+        echo ""
+        exit 1
+    fi
     check_docker_compose
 }
 
@@ -308,7 +309,7 @@ validate_non_empty() {
 build_claude_container() {
     print_section_header "Building Claude Code Container"
     echo -e "${BLUE}Building sdlc-claude:latest...${NC}"
-    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR"
+    docker build -t sdlc-claude:latest "$CLAUDE_CODE_RUNNER_DIR" > /dev/null 2>&1
 
     if [ $? -eq 0 ]; then
         echo ""
@@ -521,6 +522,14 @@ EOF
 
 # Function to start runners
 start_runners() {
+    # Check if .env file exists, run setup if not
+    if ! check_env_file; then
+        echo -e "${YELLOW}Configuration file not found. Running setup...${NC}"
+        echo ""
+        run_setup
+        echo ""
+    fi
+
     print_section_header "Starting GitHub Actions Runners"
 
     # Check Docker permissions before starting
@@ -550,9 +559,14 @@ start_runners() {
     echo ""
 
     cd "$GITHUB_RUNNER_DIR"
-    docker-compose -p "$PROJECT_NAME" up --build -d --scale github-runner=$RUNNER_COUNT
-
+    echo -e "${BLUE}Building and starting containers...${NC}"
+    docker-compose -p "$PROJECT_NAME" up --build -d --scale github-runner=$RUNNER_COUNT > /dev/null 2>&1
+    
     if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Containers built and started successfully!${NC}"
+        echo ""
+        echo -e "${BLUE}Active runners:${NC}"
+        docker-compose -p "$PROJECT_NAME" ps --filter "status=running" --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
         echo ""
         echo -e "${GREEN}✓ Runners started successfully!${NC}"
         echo ""
@@ -599,9 +613,6 @@ stop_runners() {
 
 # Main script logic
 case "${1:-}" in
-    --setup)
-        run_setup
-        ;;
     --stop)
         stop_runners
         ;;
